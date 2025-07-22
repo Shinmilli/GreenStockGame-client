@@ -3,16 +3,17 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '../../components/lib/api';
-import { Team, QuizQuestion, QuizResult } from '../../types';
+import { Team, QuizQuestion, QuizResult, GameState } from '../../types';
 
 export default function Quiz() {
   const [question, setQuestion] = useState<QuizQuestion | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [teamData, setTeamData] = useState<Team | null>(null);
+  const [gameState, setGameState] = useState<GameState | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [currentRound, setCurrentRound] = useState(1);
+  const [error, setError] = useState<string>('');
   const router = useRouter();
 
   useEffect(() => {
@@ -24,26 +25,54 @@ export default function Quiz() {
     
     setTeamData(JSON.parse(savedTeamData));
     
-    const savedRound = localStorage.getItem('currentRound');
-    if (savedRound) {
-      setCurrentRound(parseInt(savedRound));
-    }
-    
-    fetchQuizQuestion();
+    // 게임 상태 먼저 확인
+    fetchGameState();
   }, [router]);
 
-  const fetchQuizQuestion = async () => {
+  const fetchGameState = async () => {
     try {
-      const data = await api.getQuizByRound(currentRound);
+      const gameStateData = await api.getGameState();
+      setGameState(gameStateData);
+      
+      // 퀴즈 단계가 아니면 경고
+      if (!gameStateData.isActive) {
+        setError('게임이 진행 중이 아닙니다.');
+        return;
+      }
+      
+      if (gameStateData.phase !== 'quiz') {
+        setError(`퀴즈 시간이 아닙니다. 현재 단계: ${getPhaseKorean(gameStateData.phase)}`);
+        return;
+      }
+      
+      // 게임 상태의 현재 라운드로 퀴즈 조회
+      fetchQuizQuestion(gameStateData.currentRound);
+    } catch (error) {
+      console.error('게임 상태 조회 실패:', error);
+      setError('게임 상태를 확인할 수 없습니다.');
+    }
+  };
+
+  const fetchQuizQuestion = async (round: number) => {
+    try {
+      const data = await api.getQuizByRound(round);
       setQuestion(data);
       setSelectedAnswer(null);
-    } catch (error) {
+      setError(''); // 에러 클리어
+    } catch (error: any) {
       console.error('퀴즈 조회 실패:', error);
+      if (error.message?.includes('현재 라운드')) {
+        setError(`라운드가 일치하지 않습니다. 현재 라운드: ${gameState?.currentRound || '알 수 없음'}`);
+      } else if (error.message?.includes('퀴즈 단계가 아닙니다')) {
+        setError('퀴즈 시간이 아닙니다. 대시보드로 돌아가서 게임 진행 상황을 확인하세요.');
+      } else {
+        setError('퀴즈를 불러올 수 없습니다: ' + error.message);
+      }
     }
   };
 
   const submitAnswer = async () => {
-    if (!question || selectedAnswer === null || !teamData) return;
+    if (!question || selectedAnswer === null || !teamData || !gameState) return;
     
     setLoading(true);
     try {
@@ -59,15 +88,33 @@ export default function Quiz() {
         setTeamData(updatedTeam);
         localStorage.setItem('teamData', JSON.stringify(updatedTeam));
       }
-    } catch (error) {
-      alert('서버 오류가 발생했습니다.');
+    } catch (error: any) {
+      console.error('퀴즈 제출 실패:', error);
+      if (error.message?.includes('이미 퀴즈를 제출')) {
+        setError('이미 이 라운드의 퀴즈를 제출했습니다.');
+      } else if (error.message?.includes('시간이 초과')) {
+        setError('퀴즈 제출 시간이 초과되었습니다.');
+      } else {
+        setError('퀴즈 제출에 실패했습니다: ' + error.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleContinue = () => {
-    router.push('/stocks');
+    router.push('/dashboard');
+  };
+
+  const getPhaseKorean = (phase: string): string => {
+    const phaseMap: Record<string, string> = {
+      'news': '뉴스 발표',
+      'quiz': '퀴즈 단계',
+      'trading': '거래 단계',
+      'results': '결과 발표',
+      'finished': '게임 종료'
+    };
+    return phaseMap[phase] || phase;
   };
 
   const getOptionStyle = (index: number) => {
@@ -88,7 +135,34 @@ export default function Quiz() {
     return 'glass-dark border-dark-600 text-dark-400';
   };
 
-  if (!teamData || !question) {
+  // 에러 상태 렌더링
+  if (error) {
+    return (
+      <div className="min-h-screen bg-dark-900 flex items-center justify-center">
+        <div className="card-dark text-center max-w-md mx-4">
+          <div className="text-6xl mb-6">⚠️</div>
+          <h2 className="text-2xl font-bold text-red-400 mb-4">퀴즈 접근 불가</h2>
+          <p className="text-dark-200 mb-6">{error}</p>
+          <div className="space-y-3">
+            <button
+              onClick={fetchGameState}
+              className="btn-secondary w-full"
+            >
+              다시 시도
+            </button>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="btn-primary w-full"
+            >
+              대시보드로 돌아가기
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!teamData || !question || !gameState) {
     return (
       <div className="min-h-screen bg-dark-900 flex items-center justify-center">
         <div className="text-center">
@@ -112,14 +186,14 @@ export default function Quiz() {
         <div className="px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button 
-              onClick={() => router.back()}
+              onClick={() => router.push('/dashboard')}
               className="w-10 h-10 rounded-xl bg-dark-700 hover:bg-dark-600 flex items-center justify-center text-gold-300 hover:text-gold-200 transition-all duration-200"
             >
               ←
             </button>
             <div>
               <h1 className="text-xl font-bold text-gradient-blue">환경 퀴즈</h1>
-              <p className="text-dark-200">라운드 <span className="text-blue-400 font-bold">{currentRound}</span></p>
+              <p className="text-dark-200">라운드 <span className="text-blue-400 font-bold">{gameState.currentRound}</span></p>
             </div>
           </div>
           <div className="text-right">
@@ -132,6 +206,21 @@ export default function Quiz() {
       </div>
 
       <div className="relative px-4 py-8 max-w-4xl mx-auto">
+        {/* 시간 경고 */}
+        {gameState.timeRemaining < 30000 && (
+          <div className="card-glass border-red-400/50 bg-red-500/10 mb-6 animate-pulse">
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">⏰</span>
+              <div>
+                <p className="text-red-400 font-bold">시간이 얼마 남지 않았습니다!</p>
+                <p className="text-dark-300 text-sm">
+                  남은 시간: {Math.ceil(gameState.timeRemaining / 1000)}초
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 퀴즈 카드 */}
         <div className="card-glass glow-blue mb-8">
           <div className="p-8">
@@ -143,12 +232,12 @@ export default function Quiz() {
                 </div>
                 <div>
                   <span className="badge-blue">환경 퀴즈</span>
-                  <p className="text-dark-300 text-sm mt-1">문제 {currentRound}/8</p>
+                  <p className="text-dark-300 text-sm mt-1">문제 {gameState.currentRound}/8</p>
                 </div>
               </div>
               <div className="text-right">
                 <div className="w-16 h-16 bg-gradient-gold rounded-full flex items-center justify-center">
-                  <span className="text-2xl font-bold text-dark-900">{currentRound}</span>
+                  <span className="text-2xl font-bold text-dark-900">{gameState.currentRound}</span>
                 </div>
               </div>
             </div>
@@ -242,7 +331,7 @@ export default function Quiz() {
                 onClick={() => router.push('/dashboard')}
                 className="btn-secondary flex-1 py-4 text-lg"
               >
-                나중에 하기
+                대시보드로
               </button>
               <button
                 onClick={submitAnswer}
@@ -268,8 +357,8 @@ export default function Quiz() {
               className="btn-success w-full py-4 text-lg font-bold"
             >
               <div className="flex items-center justify-center space-x-3">
-                <span>주식 거래하러 가기</span>
-                <span className="text-2xl">📈</span>
+                <span>대시보드로 돌아가기</span>
+                <span className="text-2xl">📊</span>
               </div>
             </button>
           )}
@@ -286,9 +375,9 @@ export default function Quiz() {
               <div
                 key={i}
                 className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                  i < currentRound 
-                    ? 'bg-gradient-gold' 
-                    : i === currentRound - 1 
+                  i < gameState.currentRound - 1
+                    ? 'bg-gradient-emerald' 
+                    : i === gameState.currentRound - 1 
                     ? 'bg-gradient-blue animate-pulse' 
                     : 'bg-dark-600'
                 }`}
@@ -296,7 +385,7 @@ export default function Quiz() {
             ))}
           </div>
           <p className="text-dark-200">
-            라운드 <span className="text-blue-400 font-bold">{currentRound}</span> / 8
+            라운드 <span className="text-blue-400 font-bold">{gameState.currentRound}</span> / 8
           </p>
         </div>
       </div>

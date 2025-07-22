@@ -1,3 +1,27 @@
+safelist: [
+  // 텍스트 그라데이션
+  'text-gradient-gold',
+  'text-gradient-emerald',
+  'text-gradient-blue',
+
+  // 배경 그라데이션
+  'bg-gradient-gold',
+  'bg-gradient-emerald',
+  'bg-gradient-blue',
+  'bg-gradient-purple',
+
+  // 글로우 효과
+  'glow-gold',
+  'glow-emerald',
+  'glow-blue',
+  'glow-purple',
+
+  // 뱃지
+  'badge-emerald',
+  'badge-blue',
+  'badge-gold',
+  'badge-purple',
+],
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [

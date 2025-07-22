@@ -100,16 +100,25 @@ function GamePhaseIndicator({ gameState, className = '' }: GamePhaseIndicatorPro
           {phaseInfo.description}
         </p>
 
+        {/* 서버에서 받아온 phaseDurations 사용 */}
         <div className="bg-dark-700 rounded-full h-2 mb-4 overflow-hidden">
           <div 
             className={`h-full ${phaseInfo.color} transition-all duration-1000 ease-linear`}
             style={{ 
               width: gameState.phase === 'finished' ? '100%' : 
-                     gameState.timeRemaining > 0 ? 
-                     `${100 - (gameState.timeRemaining / getPhaseDuration(gameState.phase)) * 100}%` : '100%' 
+                     gameState.timeRemaining > 0 && gameState.phaseDurations ? 
+                     `${100 - (gameState.timeRemaining / gameState.phaseDurations[gameState.phase]) * 100}%` : '0%' 
             }}
           />
         </div>
+
+        {gameState.phase === 'news' && (
+          <div className="text-center">
+            <span className="bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full text-sm">
+              📰 뉴스를 확인하고 투자 전략을 세우세요!
+            </span>
+          </div>
+        )}
 
         {gameState.phase === 'quiz' && (
           <div className="text-center">
@@ -148,16 +157,6 @@ function GamePhaseIndicator({ gameState, className = '' }: GamePhaseIndicatorPro
   );
 }
 
-function getPhaseDuration(phase: string): number {
-  const durations = {
-    news: 30000,
-    quiz: 120000,
-    trading: 300000,
-    results: 30000
-  };
-  return durations[phase as keyof typeof durations] || 30000;
-}
-
 // 메인 타입 정의들
 interface TeamData {
   id: number;
@@ -173,6 +172,12 @@ interface GameState {
   phase: 'news' | 'quiz' | 'trading' | 'results' | 'finished';
   timeRemaining: number;
   isActive: boolean;
+  phaseDurations?: {
+    news: number;
+    quiz: number;
+    trading: number;
+    results: number;
+  };
 }
 
 interface PortfolioData {
@@ -220,9 +225,10 @@ interface TransactionData {
 interface NewsEvent {
   id: number;
   title: string;
-  content: string;
+  content?: string;
   roundNumber: number;
   createdAt: string;
+  affectedStocks: Record<string, number>;
 }
 
 export default function GameDashboard() {
@@ -264,7 +270,7 @@ export default function GameDashboard() {
     // 게임 상태는 1초마다, 포트폴리오는 10초마다 갱신
     const gameStateInterval = setInterval(fetchGameState, 1000);
     const portfolioInterval = setInterval(() => fetchPortfolio(team.id), 10000);
-    const newsInterval = setInterval(fetchRecentNews, 15000);
+    const newsInterval = setInterval(fetchRecentNews, 5000); // 뉴스는 5초마다 체크
 
     return () => {
       clearInterval(gameStateInterval);
@@ -305,9 +311,11 @@ export default function GameDashboard() {
 
   const fetchRecentNews = async () => {
     try {
+      // 현재 라운드의 뉴스 조회
       const response = await fetch(`${API_BASE_URL}/events?round=${gameState.currentRound}`);
       if (response.ok) {
         const data = await response.json();
+        console.log('뉴스 데이터:', data); // 디버깅용
         setRecentNews(data.slice(0, 3));
       }
     } catch (error) {
@@ -449,7 +457,7 @@ export default function GameDashboard() {
             <button
               onClick={handlePhaseAction}
               className={`w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 ${
-                gameState.phase === 'quiz' ? 'bg-gradient-purple text-white glow-purple' :
+                gameState.phase === 'quiz' ? 'bg-gradient-purple glow-purple' :
                 gameState.phase === 'trading' ? 'btn-success' :
                 gameState.phase === 'results' ? 'bg-gradient-gold text-dark-900 glow-gold' : 'btn-secondary'
               }`}
@@ -457,6 +465,18 @@ export default function GameDashboard() {
               {gameState.phase === 'quiz' && '🧠 퀴즈 참여하기'}
               {gameState.phase === 'trading' && '📈 주식 거래하기'}
               {gameState.phase === 'results' && '📊 결과 확인하기'}
+            </button>
+          </div>
+        )}
+
+        {/* 뉴스 단계에서 뉴스 보기 버튼 추가 */}
+        {gameState.isActive && gameState.phase === 'news' && (
+          <div className="mb-6">
+            <button
+              onClick={() => router.push('/events')}
+              className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 bg-gradient-blue text-white glow-blue"
+            >
+              📰 ESG 뉴스 자세히 보기
             </button>
           </div>
         )}
@@ -688,25 +708,67 @@ export default function GameDashboard() {
        {/* 현재 라운드 뉴스 */}
        <div className={`${activeTab === 'overview' || activeTab === 'all' ? 'block' : 'hidden'} sm:block mt-6`}>
          <div className="card-dark">
-           <h2 className="text-xl font-bold text-gold-300 mb-6 flex items-center">
-             <span className="text-2xl mr-3">📰</span>
-             라운드 {gameState.currentRound} ESG 뉴스
-           </h2>
+           <div className="flex items-center justify-between mb-6">
+             <h2 className="text-xl font-bold text-gold-300 flex items-center">
+               <span className="text-2xl mr-3">📰</span>
+               라운드 {gameState.currentRound} ESG 뉴스
+             </h2>
+             {gameState.phase === 'news' && (
+               <span className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-sm font-bold animate-pulse">
+                 🔴 LIVE
+               </span>
+             )}
+           </div>
            
            {recentNews.length === 0 ? (
              <div className="text-center py-8">
                <div className="text-5xl mb-4">📰</div>
-               <p className="text-dark-200">아직 발표된 뉴스가 없습니다.</p>
-               {gameState.phase === 'news' && (
-                 <p className="text-gold-400 text-sm mt-2">뉴스가 곧 발표됩니다!</p>
-               )}
+               <p className="text-dark-200">
+                 {gameState.phase === 'news' && gameState.currentRound === 1 
+                   ? '라운드 1에는 뉴스가 없습니다. 다음 라운드부터 뉴스가 발표됩니다.'
+                   : gameState.phase === 'news' 
+                   ? '뉴스가 곧 발표됩니다!' 
+                   : '이 라운드에는 발표된 뉴스가 없습니다.'}
+               </p>
              </div>
            ) : (
              <div className="space-y-4">
                {recentNews.map((news) => (
-                 <div key={news.id} className="glass-dark rounded-lg p-4 border-l-4 border-blue-400">
-                   <h3 className="font-bold text-gold-300 mb-2">{news.title}</h3>
-                   <p className="text-dark-200 text-sm mb-3 line-clamp-2">{news.content}</p>
+                 <div key={news.id} className="glass-dark rounded-lg p-4 border-l-4 border-blue-400 hover:glow-blue transition-all duration-300">
+                   <div className="flex items-start justify-between mb-3">
+                     <h3 className="font-bold text-gold-300 text-lg flex-1">{news.title}</h3>
+                     {gameState.phase === 'news' && (
+                       <span className="ml-3 bg-blue-500/20 text-blue-400 px-2 py-1 rounded text-xs font-bold">
+                         NEW
+                       </span>
+                     )}
+                   </div>
+                   
+                   {news.content && (
+                     <p className="text-dark-200 text-sm mb-3 leading-relaxed">{news.content}</p>
+                   )}
+                   
+                   {/* 영향받는 주식 표시 */}
+                   {news.affectedStocks && Object.keys(news.affectedStocks).length > 0 && (
+                     <div className="flex flex-wrap gap-2 mb-3">
+                       <span className="text-xs text-dark-400 mr-2">영향받는 주식:</span>
+                       {Object.entries(news.affectedStocks).map(([symbol, change]) => (
+                         <span
+                           key={symbol}
+                           className={`px-2 py-1 rounded text-xs font-bold ${
+                             change > 0 
+                               ? 'bg-emerald-500/20 text-emerald-400' 
+                               : change < 0 
+                               ? 'bg-red-500/20 text-red-400'
+                               : 'bg-gray-500/20 text-gray-400'
+                           }`}
+                         >
+                           {symbol} {change > 0 ? '+' : ''}{change}%
+                         </span>
+                       ))}
+                     </div>
+                   )}
+                   
                    <div className="flex items-center justify-between text-xs">
                      <span className="badge-blue">라운드 {news.roundNumber}</span>
                      <span className="text-dark-400">{formatDate(news.createdAt)}</span>
@@ -715,7 +777,7 @@ export default function GameDashboard() {
                ))}
                <Link href="/events">
                  <span className="block text-center text-blue-400 hover:text-blue-300 font-medium mt-4 transition-colors">
-                   모든 뉴스 보기 →
+                   모든 뉴스 자세히 보기 →
                  </span>
                </Link>
              </div>
@@ -775,7 +837,11 @@ export default function GameDashboard() {
            <span className="text-gold-300 font-bold">게임 팁</span>
          </div>
          <p className="text-dark-200 mb-2">
-           각 단계마다 제한 시간이 있으니 시간을 잘 활용하세요!
+           {gameState.phase === 'news' && '뉴스를 자세히 읽고 어떤 주식이 영향받을지 분석해보세요!'}
+           {gameState.phase === 'quiz' && '환경 퀴즈에 정답하면 투자 자금 2% 보너스를 받습니다!'}
+           {gameState.phase === 'trading' && '뉴스 분석을 바탕으로 현명한 투자 결정을 내리세요!'}
+           {gameState.phase === 'results' && '이번 라운드 결과를 확인하고 다음 전략을 세우세요!'}
+           {!gameState.isActive && '각 단계마다 제한 시간이 있으니 시간을 잘 활용하세요!'}
          </p>
          <p className="text-dark-400 text-sm">
            ESG 점수가 높을수록 최종 순위에 유리합니다.
