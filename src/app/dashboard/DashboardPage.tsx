@@ -4,7 +4,161 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-// 타입 정의는 동일하게 유지
+// GamePhaseIndicator 컴포넌트를 인라인으로 포함
+interface GamePhaseIndicatorProps {
+  gameState: GameState;
+  className?: string;
+}
+
+const PHASE_INFO = {
+  news: { 
+    title: '뉴스 발표', 
+    icon: '📰', 
+    color: 'bg-gradient-blue',
+    description: 'ESG 뉴스가 발표되고 주가에 즉시 반영됩니다'
+  },
+  quiz: { 
+    title: '환경 퀴즈', 
+    icon: '🧠', 
+    color: 'bg-gradient-purple',
+    description: '정답을 맞추면 투자금의 2% 보너스를 획득합니다'
+  },
+  trading: { 
+    title: '거래 시간', 
+    icon: '💼', 
+    color: 'bg-gradient-emerald',
+    description: '주식을 매수/매도할 수 있는 시간입니다'
+  },
+  results: { 
+    title: '결과 발표', 
+    icon: '📊', 
+    color: 'bg-gradient-gold',
+    description: '이번 라운드 결과를 확인하세요'
+  },
+  finished: { 
+    title: '게임 종료', 
+    icon: '🏁', 
+    color: 'bg-gradient-to-r from-purple-500 to-pink-600',
+    description: '최종 순위가 발표되었습니다'
+  }
+};
+
+function GamePhaseIndicator({ gameState, className = '' }: GamePhaseIndicatorProps) {
+  const [timeDisplay, setTimeDisplay] = useState('');
+
+  useEffect(() => {
+    const formatTime = (ms: number) => {
+      const totalSeconds = Math.ceil(ms / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    setTimeDisplay(formatTime(gameState.timeRemaining));
+  }, [gameState.timeRemaining]);
+
+  if (!gameState.isActive && gameState.phase !== 'finished') {
+    return (
+      <div className={`card-glass text-center ${className}`}>
+        <div className="p-6">
+          <div className="text-4xl mb-3">⏸️</div>
+          <h3 className="text-xl font-bold text-gold-300 mb-2">게임 대기 중</h3>
+          <p className="text-dark-200">게임이 시작되기를 기다리고 있습니다</p>
+        </div>
+      </div>
+    );
+  }
+
+  const phaseInfo = PHASE_INFO[gameState.phase];
+  const isUrgent = gameState.timeRemaining < 30000;
+
+  return (
+    <div className={`card-glass ${className} ${isUrgent ? 'animate-pulse border-red-400 border-2' : ''}`}>
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <div className={`w-12 h-12 ${phaseInfo.color} rounded-xl flex items-center justify-center text-2xl`}>
+              {phaseInfo.icon}
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gold-300">{phaseInfo.title}</h3>
+              <p className="text-dark-200 text-sm">라운드 {gameState.currentRound}/8</p>
+            </div>
+          </div>
+          
+          {gameState.phase !== 'finished' && (
+            <div className={`text-right ${isUrgent ? 'text-red-400' : 'text-gold-300'}`}>
+              <div className="text-3xl font-bold font-mono">
+                {timeDisplay}
+              </div>
+              <div className="text-sm opacity-75">남은 시간</div>
+            </div>
+          )}
+        </div>
+
+        <p className="text-dark-200 text-center mb-4">
+          {phaseInfo.description}
+        </p>
+
+        <div className="bg-dark-700 rounded-full h-2 mb-4 overflow-hidden">
+          <div 
+            className={`h-full ${phaseInfo.color} transition-all duration-1000 ease-linear`}
+            style={{ 
+              width: gameState.phase === 'finished' ? '100%' : 
+                     gameState.timeRemaining > 0 ? 
+                     `${100 - (gameState.timeRemaining / getPhaseDuration(gameState.phase)) * 100}%` : '100%' 
+            }}
+          />
+        </div>
+
+        {gameState.phase === 'quiz' && (
+          <div className="text-center">
+            <span className="bg-purple-500/20 text-purple-300 px-4 py-2 rounded-full text-sm">
+              🚀 퀴즈 페이지로 이동하여 참여하세요!
+            </span>
+          </div>
+        )}
+
+        {gameState.phase === 'trading' && (
+          <div className="text-center">
+            <span className="bg-emerald-500/20 text-emerald-300 px-4 py-2 rounded-full text-sm">
+              📈 거래 페이지에서 주식을 사고팔 수 있습니다!
+            </span>
+          </div>
+        )}
+
+        {gameState.phase === 'results' && (
+          <div className="text-center">
+            <span className="bg-gold-500/20 text-gold-300 px-4 py-2 rounded-full text-sm">
+              📊 랭킹 페이지에서 이번 라운드 결과를 확인하세요!
+            </span>
+          </div>
+        )}
+      </div>
+
+      {isUrgent && gameState.phase !== 'finished' && (
+        <div className="bg-red-500/10 border-t border-red-500/30 p-3">
+          <div className="flex items-center justify-center space-x-2 text-red-400">
+            <span className="animate-pulse">⚠️</span>
+            <span className="font-bold text-sm">시간이 얼마 남지 않았습니다!</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getPhaseDuration(phase: string): number {
+  const durations = {
+    news: 30000,
+    quiz: 120000,
+    trading: 300000,
+    results: 30000
+  };
+  return durations[phase as keyof typeof durations] || 30000;
+}
+
+// 메인 타입 정의들
 interface TeamData {
   id: number;
   code: string;
@@ -12,6 +166,13 @@ interface TeamData {
   balance: number;
   esgScore: number;
   quizScore: number;
+}
+
+interface GameState {
+  currentRound: number;
+  phase: 'news' | 'quiz' | 'trading' | 'results' | 'finished';
+  timeRemaining: number;
+  isActive: boolean;
 }
 
 interface PortfolioData {
@@ -64,13 +225,18 @@ interface NewsEvent {
   createdAt: string;
 }
 
-export default function DashboardPage() {
+export default function GameDashboard() {
   const [teamData, setTeamData] = useState<TeamData | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
+  const [gameState, setGameState] = useState<GameState>({
+    currentRound: 1,
+    phase: 'news',
+    timeRemaining: 0,
+    isActive: false
+  });
   const [recentNews, setRecentNews] = useState<NewsEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [currentRound, setCurrentRound] = useState(1);
   const [activeTab, setActiveTab] = useState('overview');
   const router = useRouter();
 
@@ -86,20 +252,38 @@ export default function DashboardPage() {
     const team = JSON.parse(savedTeamData);
     setTeamData(team);
     
+    // 초기 데이터 로드
     Promise.all([
+      fetchGameState(),
       fetchPortfolio(team.id),
       fetchRecentNews()
     ]).finally(() => {
       setLoading(false);
     });
 
-    const interval = setInterval(() => {
-      fetchPortfolio(team.id);
-      fetchRecentNews();
-    }, 30000);
+    // 게임 상태는 1초마다, 포트폴리오는 10초마다 갱신
+    const gameStateInterval = setInterval(fetchGameState, 1000);
+    const portfolioInterval = setInterval(() => fetchPortfolio(team.id), 10000);
+    const newsInterval = setInterval(fetchRecentNews, 15000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(gameStateInterval);
+      clearInterval(portfolioInterval);
+      clearInterval(newsInterval);
+    };
   }, [router]);
+
+  const fetchGameState = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/game/state`);
+      if (response.ok) {
+        const data = await response.json();
+        setGameState(data);
+      }
+    } catch (error) {
+      console.error('게임 상태 조회 실패:', error);
+    }
+  };
 
   const fetchPortfolio = async (teamId: number) => {
     try {
@@ -121,13 +305,29 @@ export default function DashboardPage() {
 
   const fetchRecentNews = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/events`);
+      const response = await fetch(`${API_BASE_URL}/events?round=${gameState.currentRound}`);
       if (response.ok) {
         const data = await response.json();
         setRecentNews(data.slice(0, 3));
       }
     } catch (error) {
       console.error('뉴스 조회 실패:', error);
+    }
+  };
+
+  const handlePhaseAction = () => {
+    switch (gameState.phase) {
+      case 'quiz':
+        router.push('/quiz');
+        break;
+      case 'trading':
+        router.push('/stocks');
+        break;
+      case 'results':
+        router.push('/ranking');
+        break;
+      default:
+        break;
     }
   };
 
@@ -219,7 +419,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <span className="badge-gold">R{currentRound}</span>
+            <span className="badge-gold">R{gameState.currentRound}</span>
             <button
               onClick={handleLogout}
               className="text-dark-300 hover:text-gold-300 transition-colors p-2 rounded-lg hover:bg-dark-700"
@@ -237,6 +437,27 @@ export default function DashboardPage() {
               <span className="text-2xl">❌</span>
               <span className="text-red-400 font-medium">{error}</span>
             </div>
+          </div>
+        )}
+
+        {/* 게임 상태 인디케이터 */}
+        <GamePhaseIndicator gameState={gameState} className="mb-6" />
+
+        {/* 페이즈별 액션 버튼 */}
+        {gameState.isActive && gameState.phase !== 'news' && gameState.phase !== 'finished' && (
+          <div className="mb-6">
+            <button
+              onClick={handlePhaseAction}
+              className={`w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 ${
+                gameState.phase === 'quiz' ? 'bg-gradient-purple text-white glow-purple' :
+                gameState.phase === 'trading' ? 'btn-success' :
+                gameState.phase === 'results' ? 'bg-gradient-gold text-dark-900 glow-gold' : 'btn-secondary'
+              }`}
+            >
+              {gameState.phase === 'quiz' && '🧠 퀴즈 참여하기'}
+              {gameState.phase === 'trading' && '📈 주식 거래하기'}
+              {gameState.phase === 'results' && '📊 결과 확인하기'}
+            </button>
           </div>
         )}
 
@@ -365,9 +586,16 @@ export default function DashboardPage() {
                 <div className="text-center py-12">
                   <div className="text-6xl mb-4">📊</div>
                   <p className="text-dark-200 text-lg mb-4">보유 중인 주식이 없습니다.</p>
-                  <Link href="/stocks">
-                    <span className="btn-success">투자하러 가기 🚀</span>
-                  </Link>
+                  {(gameState.phase === 'trading' && gameState.isActive) ? (
+                    <button
+                      onClick={() => router.push('/stocks')}
+                      className="btn-success"
+                    >
+                      투자하러 가기 🚀
+                    </button>
+                  ) : (
+                    <p className="text-dark-400 text-sm">거래 시간에 투자할 수 있습니다</p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4 max-h-96 overflow-y-auto scroll-smooth">
@@ -450,116 +678,211 @@ export default function DashboardPage() {
                         </p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+                 ))}
+               </div>
+             )}
+           </div>
+         </div>
+       </div>
 
-        {/* 최근 뉴스 */}
-        <div className={`${activeTab === 'overview' || activeTab === 'all' ? 'block' : 'hidden'} sm:block mt-6`}>
-          <div className="card-dark">
-            <h2 className="text-xl font-bold text-gold-300 mb-6 flex items-center">
-              <span className="text-2xl mr-3">📰</span>
-              최근 ESG 뉴스
-            </h2>
-            
-            {recentNews.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-5xl mb-4">📰</div>
-                <p className="text-dark-200">최근 뉴스가 없습니다.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recentNews.map((news) => (
-                  <div key={news.id} className="glass-dark rounded-lg p-4 border-l-4 border-blue-400">
-                    <h3 className="font-bold text-gold-300 mb-2">{news.title}</h3>
-                    <p className="text-dark-200 text-sm mb-3 line-clamp-2">{news.content}</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="badge-blue">라운드 {news.roundNumber}</span>
-                      <span className="text-dark-400">{formatDate(news.createdAt)}</span>
-                    </div>
-                  </div>
-                ))}
-                <Link href="/events">
-                  <span className="block text-center text-blue-400 hover:text-blue-300 font-medium mt-4 transition-colors">
-                    모든 뉴스 보기 →
-                  </span>
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
+       {/* 현재 라운드 뉴스 */}
+       <div className={`${activeTab === 'overview' || activeTab === 'all' ? 'block' : 'hidden'} sm:block mt-6`}>
+         <div className="card-dark">
+           <h2 className="text-xl font-bold text-gold-300 mb-6 flex items-center">
+             <span className="text-2xl mr-3">📰</span>
+             라운드 {gameState.currentRound} ESG 뉴스
+           </h2>
+           
+           {recentNews.length === 0 ? (
+             <div className="text-center py-8">
+               <div className="text-5xl mb-4">📰</div>
+               <p className="text-dark-200">아직 발표된 뉴스가 없습니다.</p>
+               {gameState.phase === 'news' && (
+                 <p className="text-gold-400 text-sm mt-2">뉴스가 곧 발표됩니다!</p>
+               )}
+             </div>
+           ) : (
+             <div className="space-y-4">
+               {recentNews.map((news) => (
+                 <div key={news.id} className="glass-dark rounded-lg p-4 border-l-4 border-blue-400">
+                   <h3 className="font-bold text-gold-300 mb-2">{news.title}</h3>
+                   <p className="text-dark-200 text-sm mb-3 line-clamp-2">{news.content}</p>
+                   <div className="flex items-center justify-between text-xs">
+                     <span className="badge-blue">라운드 {news.roundNumber}</span>
+                     <span className="text-dark-400">{formatDate(news.createdAt)}</span>
+                   </div>
+                 </div>
+               ))}
+               <Link href="/events">
+                 <span className="block text-center text-blue-400 hover:text-blue-300 font-medium mt-4 transition-colors">
+                   모든 뉴스 보기 →
+                 </span>
+               </Link>
+             </div>
+           )}
+         </div>
+       </div>
 
-        {/* 퀵 액션 버튼들 */}
-        <div className={`${activeTab === 'actions' || activeTab === 'all' ? 'block' : 'hidden'} sm:block mt-6`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link href="/stocks">
-              <div className="card-glass hover:glow-emerald group cursor-pointer transition-all duration-300 transform hover:scale-105">
-                <div className="flex flex-col items-center text-center p-6">
-                  <div className="w-16 h-16 bg-gradient-emerald rounded-2xl flex items-center justify-center mb-4 group-hover:animate-pulse">
-                    <span className="text-3xl">📈</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-emerald-400 mb-2">주식 거래</h3>
-                  <p className="text-dark-200 text-sm">ESG 기업 투자하기</p>
-                </div>
-              </div>
-            </Link>
-            
-            <Link href="/quiz">
-              <div className="card-glass hover:glow-blue group cursor-pointer transition-all duration-300 transform hover:scale-105">
-                <div className="flex flex-col items-center text-center p-6">
-                  <div className="w-16 h-16 bg-gradient-blue rounded-2xl flex items-center justify-center mb-4 group-hover:animate-pulse">
-                    <span className="text-3xl">🧠</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-blue-400 mb-2">환경 퀴즈</h3>
-                  <p className="text-dark-200 text-sm">보너스 획득하기</p>
-                </div>
-              </div>
-            </Link>
-            
-            <Link href="/ranking">
-              <div className="card-glass hover:glow-gold group cursor-pointer transition-all duration-300 transform hover:scale-105">
-                <div className="flex flex-col items-center text-center p-6">
-                  <div className="w-16 h-16 bg-gradient-gold rounded-2xl flex items-center justify-center mb-4 group-hover:animate-pulse">
-                    <span className="text-3xl">🏆</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-gold-400 mb-2">실시간 랭킹</h3>
-                  <p className="text-dark-200 text-sm">순위 확인하기</p>
-                </div>
-              </div>
-            </Link>
-            
-            <Link href="/events">
-              <div className="card-glass hover:glow-purple group cursor-pointer transition-all duration-300 transform hover:scale-105">
-                <div className="flex flex-col items-center text-center p-6">
-                  <div className="w-16 h-16 bg-gradient-purple rounded-2xl flex items-center justify-center mb-4 group-hover:animate-pulse">
-                    <span className="text-3xl">📰</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-purple-400 mb-2">ESG 뉴스</h3>
-                  <p className="text-dark-200 text-sm">시장 동향 확인</p>
-                </div>
-              </div>
-            </Link>
-          </div>
-        </div>
+       {/* 퀵 액션 버튼들 */}
+       <div className={`${activeTab === 'actions' || activeTab === 'all' ? 'block' : 'hidden'} sm:block mt-6`}>
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+           <ActionButton
+             href="/stocks"
+             icon="📈"
+             title="주식 거래"
+             description="ESG 기업 투자하기"
+             disabled={gameState.phase !== 'trading' || !gameState.isActive}
+             disabledReason="거래 시간이 아닙니다"
+             color="emerald"
+           />
+           
+           <ActionButton
+             href="/quiz"
+             icon="🧠"
+             title="환경 퀴즈"
+             description="보너스 획득하기"
+             disabled={gameState.phase !== 'quiz' || !gameState.isActive}
+             disabledReason="퀴즈 시간이 아닙니다"
+             color="blue"
+           />
+           
+           <ActionButton
+             href="/ranking"
+             icon="🏆"
+             title="실시간 랭킹"
+             description="순위 확인하기"
+             disabled={false}
+             disabledReason=""
+             color="gold"
+           />
+           
+           <ActionButton
+             href="/events"
+             icon="📰"
+             title="ESG 뉴스"
+             description="시장 동향 확인"
+             disabled={false}
+             disabledReason=""
+             color="purple"
+           />
+         </div>
+       </div>
 
-        {/* 하단 정보 */}
-        <div className="mt-8 card-glass text-center">
-          <div className="flex items-center justify-center space-x-3 mb-3">
-            <span className="text-2xl">💡</span>
-            <span className="text-gold-300 font-bold">게임 팁</span>
-          </div>
-          <p className="text-dark-200 mb-2">
-            ESG 점수가 높을수록 최종 순위에 유리합니다!
-          </p>
-          <p className="text-dark-400 text-sm">
-            데이터는 30초마다 자동으로 업데이트됩니다.
-          </p>
-          <div className="mt-4 h-1 w-32 bg-gradient-gold rounded-full mx-auto animate-shimmer"></div>
-        </div>
-      </div>
-    </div>
-  );
+       {/* 하단 정보 */}
+       <div className="mt-8 card-glass text-center">
+         <div className="flex items-center justify-center space-x-3 mb-3">
+           <span className="text-2xl">💡</span>
+           <span className="text-gold-300 font-bold">게임 팁</span>
+         </div>
+         <p className="text-dark-200 mb-2">
+           각 단계마다 제한 시간이 있으니 시간을 잘 활용하세요!
+         </p>
+         <p className="text-dark-400 text-sm">
+           ESG 점수가 높을수록 최종 순위에 유리합니다.
+         </p>
+         <div className="mt-4 h-1 w-32 bg-gradient-gold rounded-full mx-auto animate-shimmer"></div>
+       </div>
+
+       {/* 게임 진행 상황 */}
+       <div className="mt-6 card-dark">
+         <h3 className="text-lg font-bold text-gold-300 mb-4 flex items-center">
+           <span className="text-xl mr-2">🎯</span>
+           게임 진행 상황
+         </h3>
+         <div className="flex items-center justify-center space-x-2 mb-4">
+           {[...Array(8)].map((_, i) => (
+             <div
+               key={i}
+               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                 i < gameState.currentRound - 1 
+                   ? 'bg-gradient-emerald text-white' 
+                   : i === gameState.currentRound - 1 
+                   ? 'bg-gradient-gold text-dark-900 animate-pulse' 
+                   : 'bg-dark-600 text-dark-400'
+               }`}
+             >
+               {i + 1}
+             </div>
+           ))}
+         </div>
+         <div className="text-center">
+           <p className="text-dark-200">
+             라운드 <span className="text-gold-400 font-bold">{gameState.currentRound}</span> / 8
+           </p>
+           {gameState.isActive && (
+             <p className="text-dark-400 text-sm mt-1">
+               현재 단계: <span className="text-gold-300">{PHASE_INFO[gameState.phase]?.title}</span>
+             </p>
+           )}
+         </div>
+       </div>
+     </div>
+   </div>
+ );
+}
+
+// 액션 버튼 컴포넌트
+interface ActionButtonProps {
+ href: string;
+ icon: string;
+ title: string;
+ description: string;
+ disabled: boolean;
+ disabledReason: string;
+ color: 'emerald' | 'blue' | 'gold' | 'purple';
+}
+
+function ActionButton({ href, icon, title, description, disabled, disabledReason, color }: ActionButtonProps) {
+ const colorClasses = {
+   emerald: 'hover:glow-emerald',
+   blue: 'hover:glow-blue', 
+   gold: 'hover:glow-gold',
+   purple: 'hover:glow-purple'
+ };
+
+ const iconColors = {
+   emerald: 'bg-gradient-emerald',
+   blue: 'bg-gradient-blue',
+   gold: 'bg-gradient-gold', 
+   purple: 'bg-gradient-purple'
+ };
+
+ const textColors = {
+   emerald: 'text-emerald-400',
+   blue: 'text-blue-400',
+   gold: 'text-gold-400',
+   purple: 'text-purple-400'
+ };
+
+ if (disabled) {
+   return (
+     <div className="card-glass opacity-50 cursor-not-allowed relative">
+       <div className="flex flex-col items-center text-center p-6">
+         <div className="w-16 h-16 bg-dark-600 rounded-2xl flex items-center justify-center mb-4">
+           <span className="text-3xl grayscale">{icon}</span>
+         </div>
+         <h3 className="text-lg font-bold text-dark-400 mb-2">{title}</h3>
+         <p className="text-dark-500 text-sm mb-2">{description}</p>
+         <p className="text-xs text-red-400">{disabledReason}</p>
+       </div>
+       <div className="absolute inset-0 bg-dark-900/20 rounded-2xl flex items-center justify-center">
+         <span className="text-4xl">🔒</span>
+       </div>
+     </div>
+   );
+ }
+
+ return (
+   <Link href={href}>
+     <div className={`card-glass ${colorClasses[color]} group cursor-pointer transition-all duration-300 transform hover:scale-105`}>
+       <div className="flex flex-col items-center text-center p-6">
+         <div className={`w-16 h-16 ${iconColors[color]} rounded-2xl flex items-center justify-center mb-4 group-hover:animate-pulse`}>
+           <span className="text-3xl">{icon}</span>
+         </div>
+         <h3 className={`text-lg font-bold ${textColors[color]} mb-2`}>{title}</h3>
+         <p className="text-dark-200 text-sm">{description}</p>
+       </div>
+     </div>
+   </Link>
+ );
 }

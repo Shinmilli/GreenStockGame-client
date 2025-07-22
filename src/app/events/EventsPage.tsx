@@ -8,7 +8,7 @@ import { api } from '../../components/lib/api';
 interface NewsEvent {
   id: number;
   title: string;
-  content: string | null;
+  content?: string | null; // Made optional to match the imported type
   affectedStocks: Record<string, number>;
   roundNumber: number;
   createdAt: string;
