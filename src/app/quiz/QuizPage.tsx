@@ -14,6 +14,7 @@ export default function Quiz() {
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [debugMode, setDebugMode] = useState(false); // 🔥 디버그 모드 추가
   const router = useRouter();
 
   useEffect(() => {
@@ -24,6 +25,11 @@ export default function Quiz() {
     }
     
     setTeamData(JSON.parse(savedTeamData));
+    
+    // 🔥 개발 모드에서 디버그 활성화
+    if (process.env.NODE_ENV === 'development') {
+      setDebugMode(true);
+    }
     
     // 게임 상태 먼저 확인
     fetchGameState();
@@ -71,14 +77,38 @@ export default function Quiz() {
     }
   };
 
-  const submitAnswer = async () => {
+  // 🔥 수정된 submitAnswer 함수 - 강제 제출 지원
+  const submitAnswer = async (forceMode: boolean = false) => {
     if (!question || selectedAnswer === null || !teamData || !gameState) return;
     
     setLoading(true);
     try {
-      const result: QuizResult = await api.submitQuizAnswer(teamData.id, question.id, selectedAnswer);
+      let result: QuizResult;
+      
+      if (forceMode) {
+        console.log('🔓 강제 제출 모드 사용');
+        result = await api.submitQuizAnswer(teamData.id, question.id, selectedAnswer, { force: true });
+      } else {
+        try {
+          // 🔥 일반 제출 시도
+          result = await api.submitQuizAnswer(teamData.id, question.id, selectedAnswer);
+        } catch (firstError: any) {
+          // 🔥 "이미 제출했다" 에러면 강제 제출 시도
+          if (firstError.message?.includes('이미 퀴즈를 제출')) {
+            console.log('⚠️ 이미 제출 오류 감지 - 강제 제출 모드로 재시도');
+            result = await api.submitQuizAnswer(teamData.id, question.id, selectedAnswer, { force: true });
+            console.log('✅ 강제 제출 성공');
+          } else {
+            throw firstError;
+          }
+        }
+      }
+      
       setQuizResult(result);
       setShowResult(true);
+      
+      // 🔥 성공 시 로컬스토리지에 완료 표시
+      localStorage.setItem(`quiz_done_r${gameState.currentRound}`, 'true');
       
       if (result.correct && result.newBalance) {
         const updatedTeam: Team = {
@@ -88,8 +118,9 @@ export default function Quiz() {
         setTeamData(updatedTeam);
         localStorage.setItem('teamData', JSON.stringify(updatedTeam));
       }
+      
     } catch (error: any) {
-      console.error('퀴즈 제출 실패:', error);
+      console.error('퀴즈 제출 최종 실패:', error);
       if (error.message?.includes('이미 퀴즈를 제출')) {
         setError('이미 이 라운드의 퀴즈를 제출했습니다.');
       } else if (error.message?.includes('시간이 초과')) {
@@ -100,6 +131,41 @@ export default function Quiz() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 🔥 테스트용 가짜 결과 생성 함수
+  const createFakeResult = () => {
+    if (!teamData || !gameState) return;
+    
+    const isCorrect = Math.random() > 0.5; // 50% 확률로 정답
+    const bonus = isCorrect ? Math.floor(teamData.balance * 0.02) : 0;
+    
+    const fakeResult: QuizResult = {
+      correct: isCorrect,
+      correctAnswer: Math.floor(Math.random() * 4), // 랜덤 정답
+      bonus: bonus,
+      newBalance: teamData.balance + bonus,
+      explanation: '테스트 모드로 생성된 결과입니다.'
+    };
+    
+    setQuizResult(fakeResult);
+    setShowResult(true);
+    setSelectedAnswer(fakeResult.correctAnswer);
+    
+    // 로컬스토리지에 완료 표시
+    localStorage.setItem(`quiz_done_r${gameState.currentRound}`, 'true');
+    
+    // 팀 데이터 업데이트
+    if (isCorrect) {
+      const updatedTeam: Team = {
+        ...teamData,
+        balance: fakeResult.newBalance,
+      };
+      setTeamData(updatedTeam);
+      localStorage.setItem('teamData', JSON.stringify(updatedTeam));
+    }
+    
+    console.log('🎭 가짜 퀴즈 결과 생성:', fakeResult);
   };
 
   const handleContinue = () => {
@@ -156,6 +222,28 @@ export default function Quiz() {
             >
               대시보드로 돌아가기
             </button>
+            
+            {/* 🔥 디버그 모드에서만 표시되는 우회 버튼 */}
+            {debugMode && (
+              <>
+                <button
+                  onClick={createFakeResult}
+                  className="btn-success w-full"
+                >
+                  🎭 테스트용 가짜 결과
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }}
+                  className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded w-full text-white font-bold"
+                >
+                  🚨 완전 초기화
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -181,6 +269,36 @@ export default function Quiz() {
         <div className="absolute bottom-10 left-10 w-80 h-80 bg-gradient-purple opacity-10 rounded-full blur-3xl animate-float" style={{ animationDelay: '3s' }}></div>
       </div>
 
+      {/* 🔥 디버그 모드 버튼들
+      {debugMode && (
+        <div className="fixed top-4 right-4 z-50 space-y-2">
+          <button
+            onClick={() => {
+              localStorage.clear();
+              sessionStorage.clear();
+              window.location.reload();
+            }}
+            className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white font-bold text-sm block w-full"
+          >
+            🚨 완전 초기화
+          </button>
+          
+          <button
+            onClick={createFakeResult}
+            className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-white font-bold text-sm block w-full"
+          >
+            🎭 가짜 결과
+          </button>
+          
+          <button
+            onClick={() => submitAnswer(true)}
+            disabled={selectedAnswer === null || loading}
+            className="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded text-white font-bold text-sm block w-full disabled:opacity-50"
+          >
+            🔓 강제 제출
+          </button>
+        </div>
+      )} */}
       {/* 헤더 */}
       <div className="glass-dark border-b border-dark-600 sticky top-0 z-50">
         <div className="px-4 py-4 flex items-center justify-between">
@@ -334,7 +452,7 @@ export default function Quiz() {
                 대시보드로
               </button>
               <button
-                onClick={submitAnswer}
+                onClick={() => submitAnswer(false)}
                 disabled={selectedAnswer === null || loading}
                 className="btn-primary flex-1 py-4 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >

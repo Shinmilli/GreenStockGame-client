@@ -30,10 +30,20 @@ interface NewsEvent {
   affectedStocks: Record<string, number>;
 }
 
+interface DebugInfo {
+  총키개수: number;
+  게임관련키: number;
+  상세내역: Array<{
+    키: string;
+    값: string | null;
+    타입: string;
+  }>;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
 
-
 export default function AdminDashboard() {
+  // 🔥 모든 useState를 최상위에 선언
   const [gameState, setGameState] = useState<GameState>({
     currentRound: 1,
     phase: 'news',
@@ -46,11 +56,35 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('control');
   const [logs, setLogs] = useState<string[]>([]);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null); // 🔥 타입 지정 및 최상위 이동
 
   // 로그 추가 함수
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev.slice(0, 9)]);
+  };
+
+  // 🔥 로컬스토리지 분석 함수
+  const analyzeLocalStorage = () => {
+    const allKeys = Object.keys(localStorage);
+    const gameKeys = allKeys.filter(key => 
+      key.startsWith('news_') || key.startsWith('quiz_') || key.startsWith('team')
+    );
+    
+    const analysis: DebugInfo = {
+      총키개수: allKeys.length,
+      게임관련키: gameKeys.length,
+      상세내역: gameKeys.map(key => ({
+        키: key,
+        값: localStorage.getItem(key),
+        타입: key.startsWith('news_') ? '뉴스' : key.startsWith('quiz_') ? '퀴즈' : '기타'
+      }))
+    };
+    
+    setDebugInfo(analysis);
+    console.log('🔍 로컬스토리지 분석:', analysis);
+    addLog(`🔍 로컬스토리지 분석 완료: ${analysis.게임관련키}개 항목 발견`);
+    return analysis;
   };
 
   // 데이터 페칭 함수들
@@ -164,6 +198,29 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🔥 게임 데이터 정리 함수
+  const clearAllGameData = () => {
+    const gameKeys = Object.keys(localStorage).filter(key => 
+      key.startsWith('news_') || key.startsWith('quiz_')
+    );
+    
+    const confirmation = confirm(
+      `⚠️ 정말로 ${gameKeys.length}개의 게임 진행 데이터를 모두 삭제하시겠습니까?\n\n` +
+      `이 작업은 되돌릴 수 없으며, 모든 학생들의 뉴스/퀴즈 진행 상태가 초기화됩니다.`
+    );
+    
+    if (confirmation) {
+      console.log('🗑️ 정리할 키들:', gameKeys);
+      gameKeys.forEach(key => {
+        console.log('삭제:', key, '=', localStorage.getItem(key));
+        localStorage.removeItem(key);
+      });
+      addLog(`✅ ${gameKeys.length}개의 게임 데이터를 정리했습니다!`);
+      alert(`✅ ${gameKeys.length}개의 게임 데이터를 정리했습니다!`);
+      analyzeLocalStorage();
+    }
+  };
+
   // 초기 데이터 로드 및 실시간 업데이트
   useEffect(() => {
     const loadInitialData = async () => {
@@ -249,6 +306,7 @@ export default function AdminDashboard() {
         <div className="flex space-x-1">
           {[
             { id: 'control', label: '게임 제어', icon: '🎮' },
+            { id: 'debug', label: '데이터 관리', icon: '🛠️' },
             { id: 'events', label: '이벤트 관리', icon: '📰' },
             { id: 'logs', label: '로그', icon: '📋' }
           ].map((tab) => (
@@ -379,6 +437,200 @@ export default function AdminDashboard() {
               <p className="text-center text-gray-400">
                 전체 진행률: {Math.round((gameState.currentRound / 8) * 100)}%
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* 🔥 데이터 관리 탭 추가 */}
+        {activeTab === 'debug' && (
+          <div className="space-y-6">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+              <h2 className="text-xl font-bold mb-6 flex items-center">
+                <span className="text-2xl mr-3">🛠️</span>
+                게임 데이터 관리
+              </h2>
+              
+              {/* 빠른 액션 버튼들 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <button
+                  onClick={clearAllGameData}
+                  className="bg-red-600 hover:bg-red-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
+                >
+                  🗑️ 모든 게임 데이터 정리
+                </button>
+
+                <button
+                  onClick={() => {
+                    const newsKeys = [];
+                    for (let i = 1; i <= 8; i++) {
+                      newsKeys.push(`news_read_r${i}`);
+                    }
+                    
+                    const confirmation = confirm(
+                      `모든 라운드의 뉴스 읽기 상태를 초기화하시겠습니까?\n(퀴즈 데이터는 유지됩니다)`
+                    );
+                    
+                    if (confirmation) {
+                      newsKeys.forEach(key => localStorage.removeItem(key));
+                      addLog('📰 뉴스 데이터만 정리 완료');
+                      alert('뉴스 읽기 상태를 모두 초기화했습니다!');
+                      analyzeLocalStorage();
+                    }
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
+                >
+                  📰 뉴스 데이터만 정리
+                </button>
+
+                <button
+                  onClick={() => {
+                    const quizKeys = [];
+                    for (let i = 1; i <= 8; i++) {
+                      quizKeys.push(`quiz_done_r${i}`);
+                    }
+                    
+                    const confirmation = confirm(
+                      `모든 라운드의 퀴즈 완료 상태를 초기화하시겠습니까?\n(뉴스 데이터는 유지됩니다)`
+                    );
+                    
+                    if (confirmation) {
+                      quizKeys.forEach(key => localStorage.removeItem(key));
+                      addLog('🧠 퀴즈 데이터만 정리 완료');
+                      alert('퀴즈 완료 상태를 모두 초기화했습니다!');
+                      analyzeLocalStorage();
+                    }
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
+                >
+                  🧠 퀴즈 데이터만 정리
+                </button>
+
+                <button
+                  onClick={analyzeLocalStorage}
+                  className="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
+                >
+                  🔍 상태 분석
+                </button>
+              </div>
+
+              {/* 🔥 서버 데이터 관리 섹션 추가 */}
+              <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4 mb-6">
+                <h4 className="text-red-400 font-bold mb-4 flex items-center">
+                  <span className="text-xl mr-2">🗄️</span>
+                  서버 데이터 관리 (위험)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={async () => {
+                      const confirmation = confirm(
+                        '⚠️ 서버의 모든 퀴즈 제출 기록을 삭제하시겠습니까?\n\n' +
+                        '이 작업은 데이터베이스의 퀴즈 답안 및 보상 기록을 모두 삭제합니다.'
+                      );
+                      
+                      if (confirmation) {
+                        try {
+                          const response = await fetch(`${API_BASE_URL}/quiz/admin/clear-all`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' }
+                          });
+                          
+                          if (response.ok) {
+                            const result = await response.json();
+                            addLog(`🗑️ 서버 퀴즈 기록 삭제: ${result.message}`);
+                            alert(result.message);
+                          } else {
+                            const error = await response.json();
+                            addLog('❌ 서버 퀴즈 삭제 실패: ' + error.message);
+                            alert('서버 데이터 삭제 실패: ' + error.message);
+                          }
+                        } catch (error) {
+                          addLog('❌ 서버 통신 오류: ' + error.message);
+                          alert('서버 통신 오류: ' + error.message);
+                        }
+                      }
+                    }}
+                    className="bg-red-600 hover:bg-red-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
+                  >
+                    🗄️ 서버 퀴즈 기록 삭제
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      const teamId = prompt('삭제할 팀 ID를 입력하세요:');
+                      const round = prompt('삭제할 라운드를 입력하세요 (1-8):');
+                      
+                      if (teamId && round && !isNaN(parseInt(teamId)) && !isNaN(parseInt(round))) {
+                        const confirmation = confirm(
+                          `팀 ${teamId}의 라운드 ${round} 퀴즈 기록을 삭제하시겠습니까?`
+                        );
+                        
+                        if (confirmation) {
+                          try {
+                            const response = await fetch(`${API_BASE_URL}/quiz/admin/teams/${teamId}/quiz/${round}`, {
+                              method: 'DELETE'
+                            });
+                            
+                            if (response.ok) {
+                              const result = await response.json();
+                              addLog(`🗑️ 특정 팀 퀴즈 삭제: ${result.message}`);
+                              alert(result.message);
+                            } else {
+                              const error = await response.json();
+                              addLog('❌ 팀 퀴즈 삭제 실패: ' + error.message);
+                              alert('삭제 실패: ' + error.message);
+                            }
+                          } catch (error) {
+                            addLog('❌ 서버 통신 오류: ' + error.message);
+                            alert('서버 통신 오류: ' + error.message);
+                          }
+                        }
+                      } else {
+                        alert('올바른 팀 ID와 라운드를 입력해주세요.');
+                      }
+                    }}
+                    className="bg-orange-600 hover:bg-orange-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
+                  >
+                    👤 특정 팀 퀴즈 삭제
+                  </button>
+                </div>
+              </div>
+
+              {/* 분석 결과 표시 */}
+              {debugInfo && (
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <h4 className="text-lg font-bold text-white mb-4">📊 분석 결과</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="text-gray-300 text-sm">전체 로컬스토리지 키</div>
+                      <div className="text-white text-2xl font-bold">{debugInfo.총키개수}개</div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="text-gray-300 text-sm">게임 관련 키</div>
+                      <div className="text-yellow-400 text-2xl font-bold">{debugInfo.게임관련키}개</div>
+                    </div>
+                  </div>
+                  
+                  {debugInfo.상세내역.length > 0 && (
+                    <div>
+                      <h5 className="text-white font-bold mb-2">상세 내역:</h5>
+                      <div className="max-h-40 overflow-y-auto">
+                        {debugInfo.상세내역.map((item, index) => (
+                          <div key={index} className="flex justify-between items-center py-1 border-b border-gray-600 text-sm">
+                            <span className="text-gray-300 font-mono">{item.키}</span>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                              item.타입 === '뉴스' ? 'bg-blue-600' : 
+                              item.타입 === '퀴즈' ? 'bg-purple-600' : 'bg-gray-600'
+                            }`}>
+                              {item.타입}
+                            </span>
+                            <span className="text-white">{item.값}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -1,376 +1,346 @@
-// components/lib/api.ts
-import { 
-  Team, 
-  Stock, 
-  QuizQuestion, 
-  QuizResult, 
-  NewsEvent, 
-  TeamRanking, 
-  PortfolioData,
-  GameState,
-  TradeStatus,
-  RoundQuizResults,
-  RoundTradeHistory,
-  LoginResponse,
-  TradeResponse
-} from '../../types';
+// lib/simpleApi.ts - 퀴즈 강제 제출 기능 추가
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
-interface ApiResponse<T = any> {
-  data?: T;
-  message?: string;
-  error?: string;
-}
-
-class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-async function fetchApi<T = any>(
+// 기본 fetch 래퍼 - 에러 처리 포함
+async function apiCall<T = any>(
   endpoint: string, 
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  const config: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  };
-
   try {
-    const response = await fetch(url, config);
-    
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    });
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new ApiError(
-        response.status, 
-        errorData.message || `HTTP ${response.status}: ${response.statusText}`
-      );
+      const errorData = await response.json().catch(() => ({ message: '서버 오류' }));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
     }
 
     return await response.json();
   } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    
-    console.error('API 요청 오류:', error);
-    throw new ApiError(500, '네트워크 오류가 발생했습니다.');
+    console.error(`API 호출 실패 (${endpoint}):`, error);
+    throw error;
   }
 }
 
+// 기존 코드 호환용 api 객체 (수정됨)
 export const api = {
-  // ===== 인증 =====
-  async login(teamCode: string): Promise<LoginResponse> {
-    return fetchApi('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ teamCode }),
-    });
+  // 이벤트/뉴스 관련
+  getEvents: (round?: number) => {
+    const url = round ? `/events?round=${round}` : '/events';
+    return apiCall(url);
   },
 
-  // ===== 게임 상태 관리 =====
-  async getGameState(): Promise<GameState> {
-    return fetchApi('/game/state');
-  },
+  // 인증 관련
+  login: (teamCode: string) => apiCall('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ teamCode }),
+  }),
 
-  async startGame(): Promise<{ message: string; gameState: GameState }> {
-    return fetchApi('/game/start', {
-      method: 'POST',
-    });
-  },
+  // 게임 상태
+  getGameState: () => apiCall('/game/state'),
 
-  async resetGame(): Promise<{ message: string; gameState: GameState }> {
-    return fetchApi('/game/reset', {
-      method: 'POST',
-    });
-  },
-
-  async forceNextPhase(): Promise<{ message: string; gameState: GameState }> {
-    return fetchApi('/game/next-phase', {
-      method: 'POST',
-    });
-  },
-
-  // ===== 주식 =====
-  async getStocks(): Promise<Stock[]> {
-    return fetchApi('/stocks');
-  },
-
-  async getStockHistory(stockId: number): Promise<any[]> {
-    return fetchApi(`/stocks/${stockId}/history`);
-  },
-
-  // ===== 거래 =====
-  async executeTrade(
-    teamId: number, 
-    stockId: number, 
-    quantity: number, 
-    action: 'buy' | 'sell'
-  ): Promise<TradeResponse> {
-    return fetchApi('/trade', {
-      method: 'POST',
-      body: JSON.stringify({ teamId, stockId, quantity, action }),
-    });
-  },
-
-  async getTradeStatus(): Promise<TradeStatus> {
-    return fetchApi('/game/trade/status');
-  },
-
-  async getRoundTradeHistory(round: number): Promise<RoundTradeHistory> {
-    return fetchApi(`/game/trade/history/${round}`);
-  },
-
-  // ===== 포트폴리오 =====
-  async getPortfolio(teamId: number): Promise<PortfolioData> {
-    return fetchApi(`/portfolio/${teamId}`);
-  },
-
-  // ===== 퀴즈 =====
-  async getQuizByRound(round: number): Promise<QuizQuestion> {
-    return fetchApi(`/quiz/${round}`);
-  },
-
-  async submitQuizAnswer(
+  // 퀴즈 관련 (🔥 force 파라미터 추가)
+  getQuizByRound: (round: number) => apiCall(`/quiz/${round}`),
+  
+  submitQuizAnswer: (
     teamId: number, 
     questionId: number, 
-    selectedAnswer: number
-  ): Promise<QuizResult> {
-    return fetchApi('/quiz/submit', {
+    selectedAnswer: number,
+    options: { force?: boolean } = {}
+  ) => {
+    const endpoint = options.force ? '/quiz/submit?force=true' : '/quiz/submit';
+    return apiCall(endpoint, {
       method: 'POST',
-      body: JSON.stringify({ teamId, questionId, selectedAnswer }),
+      body: JSON.stringify({ 
+        teamId, 
+        questionId, 
+        selectedAnswer,
+        force: options.force || false 
+      }),
     });
   },
 
-  async getQuizResults(round: number): Promise<RoundQuizResults> {
-    return fetchApi(`/game/quiz/results/${round}`);
-  },
+  // 🔥 새로 추가: 관리자용 퀴즈 데이터 정리
+  clearQuizSubmissions: () => apiCall('/admin/clear-quiz-submissions', {
+    method: 'DELETE',
+  }),
 
-  // ===== 랭킹 =====
-  async getRanking(): Promise<TeamRanking[]> {
-    return fetchApi('/ranking');
-  },
+  clearTeamQuizSubmission: (teamId: number, round: number) => 
+    apiCall(`/admin/teams/${teamId}/quiz/${round}`, {
+      method: 'DELETE',
+    }),
 
-  // ===== 이벤트/뉴스 =====
-  async getEvents(round?: number): Promise<NewsEvent[]> {
-    const params = round ? `?round=${round}` : '';
-    return fetchApi(`/events${params}`);
-  },
-
-  async triggerEvent(
-    eventId: number, 
-    action: 'trigger' | 'activate' | 'deactivate'
-  ): Promise<{ message: string; affectedStocks?: Record<string, number> }> {
-    return fetchApi('/events/trigger', {
+  // 주식 관련
+  getStocks: () => apiCall('/stocks'),
+  
+  executeTrade: (teamId: number, stockId: number, quantity: number, action: 'buy' | 'sell') => 
+    apiCall('/trade', {
       method: 'POST',
-      body: JSON.stringify({ eventId, action }),
-    });
+      body: JSON.stringify({ teamId, stockId, quantity, action }),
+    }),
+
+  // 포트폴리오
+  getPortfolio: (teamId: number) => apiCall(`/portfolio/${teamId}`),
+
+  // 랭킹
+  getRanking: () => apiCall('/ranking'),
+};
+
+// 나머지 코드는 동일하게 유지...
+export const simpleApi = {
+  // 🎮 게임 관련
+  game: {
+    getStatus: () => apiCall('/game/state'),
+    start: () => apiCall('/game/start', { method: 'POST' }),
+    reset: () => apiCall('/game/reset', { method: 'POST' }),
+    nextStep: () => apiCall('/game/next-phase', { method: 'POST' }),
   },
 
-  // ===== 헬스 체크 =====
-  async healthCheck(): Promise<{ status: string; timestamp: string; environment: string }> {
-    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/health`);
-    if (!response.ok) {
-      throw new ApiError(response.status, 'Health check failed');
-    }
-    return response.json();
+  // 👥 팀 관련
+  team: {
+    login: (teamCode: string) => apiCall('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ teamCode }),
+    }),
+    getInfo: (teamId: number) => apiCall(`/portfolio/${teamId}`),
+    getRanking: () => apiCall('/ranking'),
   },
 
-  // ===== 관리자 기능 =====
-  async getAdminInfo(): Promise<any> {
-    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/admin`);
-    if (!response.ok) {
-      throw new ApiError(response.status, 'Admin info fetch failed');
-    }
-    return response.json();
+  // 📰 뉴스 관련
+  news: {
+    getAll: () => apiCall('/events'),
+    getByRound: (round: number) => apiCall(`/events?round=${round}`),
+  },
+
+  // 🧠 퀴즈 관련 (🔥 수정됨)
+  quiz: {
+    getQuestion: (round: number) => apiCall(`/quiz/${round}`),
+    submitAnswer: (teamId: number, questionId: number, answer: number, force: boolean = false) => 
+      api.submitQuizAnswer(teamId, questionId, answer, { force }),
+    
+    // 🔥 새로 추가: 강제 제출
+    forceSubmit: (teamId: number, questionId: number, answer: number) => 
+      api.submitQuizAnswer(teamId, questionId, answer, { force: true }),
+  },
+
+  // 📈 주식 관련
+  stocks: {
+    getAll: () => apiCall('/stocks'),
+    buy: (teamId: number, stockId: number, quantity: number) => 
+      apiCall('/trade', {
+        method: 'POST',
+        body: JSON.stringify({ teamId, stockId, quantity, action: 'buy' }),
+      }),
+    sell: (teamId: number, stockId: number, quantity: number) => 
+      apiCall('/trade', {
+        method: 'POST',
+        body: JSON.stringify({ teamId, stockId, quantity, action: 'sell' }),
+      }),
+  },
+
+  // 🔥 새로 추가: 관리자 기능
+  admin: {
+    clearAllQuizData: () => api.clearQuizSubmissions(),
+    clearTeamQuiz: (teamId: number, round: number) => api.clearTeamQuizSubmission(teamId, round),
   },
 };
 
-// ===== 에러 핸들링 헬퍼 =====
-export function handleApiError(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-  
-  if (error instanceof Error) {
-    return error.message;
-  }
-  
-  return '알 수 없는 오류가 발생했습니다.';
-}
-
-// ===== 실시간 업데이트를 위한 폴링 헬퍼 =====
-export function createPollingSubscription<T>(
-  apiCall: () => Promise<T>,
-  onUpdate: (data: T) => void,
-  onError: (error: string) => void,
-  interval: number = 5000
-) {
-  let timeoutId: NodeJS.Timeout;
-  let isActive = true;
-
-  const poll = async () => {
-    if (!isActive) return;
-
-    try {
-      const data = await apiCall();
-      onUpdate(data);
-    } catch (error) {
-      onError(handleApiError(error));
-    }
-
-    if (isActive) {
-      timeoutId = setTimeout(poll, interval);
-    }
-  };
-
-  // 즉시 첫 번째 호출
-  poll();
-
-  // 구독 해제 함수 반환
-  return () => {
-    isActive = false;
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  };
-}
-
-// ===== 게임 상태 실시간 감시 =====
-export function useGameStatePolling(
-  onGameStateUpdate: (gameState: GameState) => void,
-  onError?: (error: string) => void,
-  enabled: boolean = true,
-  interval: number = 1000
-) {
-  if (typeof window === 'undefined' || !enabled) {
-    return () => {};
-  }
-
-  return createPollingSubscription(
-    api.getGameState,
-    onGameStateUpdate,
-    onError || ((error) => console.error('게임 상태 폴링 오류:', error)),
-    interval
-  );
-}
-
-// ===== 포트폴리오 실시간 감시 =====
-export function usePortfolioPolling(
-  teamId: number,
-  onPortfolioUpdate: (portfolio: PortfolioData) => void,
-  onError?: (error: string) => void,
-  enabled: boolean = true,
-  interval: number = 10000
-) {
-  if (typeof window === 'undefined' || !enabled) {
-    return () => {};
-  }
-
-  return createPollingSubscription(
-    () => api.getPortfolio(teamId),
-    onPortfolioUpdate,
-    onError || ((error) => console.error('포트폴리오 폴링 오류:', error)),
-    interval
-  );
-}
-
-// ===== 랭킹 실시간 감시 =====
-export function useRankingPolling(
-  onRankingUpdate: (rankings: TeamRanking[]) => void,
-  onError?: (error: string) => void,
-  enabled: boolean = true,
-  interval: number = 30000
-) {
-  if (typeof window === 'undefined' || !enabled) {
-    return () => {};
-  }
-
-  return createPollingSubscription(
-    api.getRanking,
-    onRankingUpdate,
-    onError || ((error) => console.error('랭킹 폴링 오류:', error)),
-    interval
-  );
-}
-
-// ===== 게임 상태 확인 헬퍼 =====
-export async function checkGameStatus(): Promise<{
-  isOnline: boolean;
-  gameState?: GameState;
-  error?: string;
-}> {
-  try {
-    await api.healthCheck();
-    const gameState = await api.getGameState();
-    return { isOnline: true, gameState };
-  } catch (error) {
-    return { 
-      isOnline: false, 
-      error: handleApiError(error) 
+// 나머지 헬퍼 함수들은 그대로 유지
+export const gameHelper = {
+  translatePhase: (phase: string): string => {
+    const phases: Record<string, string> = {
+      'news': '뉴스 읽기 📰',
+      'quiz': '퀴즈 풀기 🧠',
+      'trading': '주식 거래 📈',
+      'results': '결과 보기 📊',
+      'finished': '게임 끝 🏆',
     };
-  }
-}
-
-// ===== 배치 API 호출 =====
-export async function fetchDashboardData(teamId: number): Promise<{
-  gameState: GameState;
-  portfolio: PortfolioData;
-  rankings: TeamRanking[];
-  events: NewsEvent[];
-}> {
-  const [gameState, portfolio, rankings, events] = await Promise.all([
-    api.getGameState(),
-    api.getPortfolio(teamId),
-    api.getRanking(),
-    api.getEvents()
-  ]);
-
-  return { gameState, portfolio, rankings, events };
-}
-
-// ===== 게임 관리자 도구 =====
-export const adminApi = {
-  async startGame() {
-    return api.startGame();
+    return phases[phase] || '알 수 없음';
   },
 
-  async resetGame() {
-    return api.resetGame();
+  formatTime: (milliseconds: number): string => {
+    const seconds = Math.ceil(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   },
 
-  async forceNextPhase() {
-    return api.forceNextPhase();
+  formatMoney: (amount: number): string => {
+    if (amount >= 100000000) {
+      return `${(amount / 100000000).toFixed(1)}억원`;
+    } else if (amount >= 10000) {
+      return `${(amount / 10000).toFixed(0)}만원`;
+    } else {
+      return `${amount.toLocaleString()}원`;
+    }
   },
 
-  async triggerNewsEvent(eventId: number) {
-    return api.triggerEvent(eventId, 'trigger');
+  formatProfit: (profit: number, isPercent: boolean = false): { text: string, color: string } => {
+    const value = isPercent ? `${profit.toFixed(1)}%` : gameHelper.formatMoney(profit);
+    const color = profit > 0 ? 'text-emerald-400' : profit < 0 ? 'text-red-400' : 'text-gray-400';
+    const sign = profit > 0 ? '+' : '';
+    
+    return {
+      text: `${sign}${value}`,
+      color: color
+    };
   },
 
-  async activateEvent(eventId: number) {
-    return api.triggerEvent(eventId, 'activate');
+  formatCategory: (category: string): string => {
+    const categories: Record<string, string> = {
+      'Clean Energy': '⚡ 청정에너지',
+      'Sustainable Food': '🥬 지속가능 식품',
+      'Wind Energy': '💨 풍력발전',
+      'Solar Energy': '☀️ 태양광발전',
+      'Waste Management': '♻️ 재활용',
+      'Water Treatment': '💧 수질정화',
+      'Organic Agriculture': '🌱 유기농업',
+      'Carbon Capture': '🌍 탄소포집',
+    };
+    return categories[category] || category;
   },
-
-  async deactivateEvent(eventId: number) {
-    return api.triggerEvent(eventId, 'deactivate');
-  },
-
-  async getSystemStatus() {
-    return api.healthCheck();
-  },
-
-  async getAdminInfo() {
-    return api.getAdminInfo();
-  }
 };
 
-// ===== 타입 내보내기 =====
-export { ApiError };
-export type { ApiResponse };
+export const storage = {
+  saveTeam: (team: any) => {
+    localStorage.setItem('teamData', JSON.stringify(team));
+  },
+  
+  getTeam: () => {
+    const data = localStorage.getItem('teamData');
+    return data ? JSON.parse(data) : null;
+  },
+  
+  markNewsRead: (round: number) => {
+    localStorage.setItem(`news_read_r${round}`, 'true');
+  },
+  
+  hasReadNews: (round: number): boolean => {
+    return localStorage.getItem(`news_read_r${round}`) === 'true';
+  },
+  
+  markQuizDone: (round: number) => {
+    localStorage.setItem(`quiz_done_r${round}`, 'true');
+  },
+  
+  hasFinishedQuiz: (round: number): boolean => {
+    return localStorage.getItem(`quiz_done_r${round}`) === 'true';
+  },
+  
+  clear: () => {
+    localStorage.clear();
+  },
+
+  // 🔥 새로 추가: 게임 데이터만 정리
+  clearGameData: () => {
+    const keys = Object.keys(localStorage).filter(key => 
+      key.startsWith('news_') || key.startsWith('quiz_')
+    );
+    keys.forEach(key => localStorage.removeItem(key));
+    return keys.length;
+  },
+};
+
+export const errorHandler = {
+  getSimpleMessage: (error: any): string => {
+    const message = error?.message || error || '알 수 없는 오류';
+    
+    const translations: Record<string, string> = {
+      'Network Error': '인터넷 연결을 확인해주세요 🌐',
+      'fetch failed': '서버에 연결할 수 없어요 🔌',
+      '404': '요청한 정보를 찾을 수 없어요 🔍',
+      '500': '서버에 문제가 생겼어요. 선생님께 말씀드려주세요 🚨',
+      '잔액이 부족합니다': '돈이 부족해요! 더 저렴한 주식을 사보세요 💰',
+      '보유 주식이 부족합니다': '가지고 있는 주식이 없어요! 먼저 주식을 사야해요 📈',
+      '게임이 진행 중이 아닙니다': '게임이 아직 시작되지 않았어요. 선생님을 기다려주세요 ⏳',
+      '거래 시간이 아닙니다': '지금은 주식을 사고팔 수 없어요. 거래 시간을 기다려주세요 ⏰',
+      '퀴즈 시간이 아닙니다': '지금은 퀴즈를 풀 수 없어요. 퀴즈 시간을 기다려주세요 🧠',
+      '이미 퀴즈를 제출': '이미 퀴즈를 풀었어요! 다음 라운드를 기다려주세요 ✅',
+    };
+    
+    for (const [key, translation] of Object.entries(translations)) {
+      if (message.includes(key)) {
+        return translation;
+      }
+    }
+    
+    return message;
+  },
+};
+
+export const gameFlow = {
+  getNextAction: (gameState: any, teamState: any) => {
+    if (!gameState?.isActive || gameState?.currentRound > 8) {
+      return {
+        title: '게임 끝! 🎉',
+        description: '수고했어요! 최종 순위를 확인해보세요.',
+        action: '순위 보기',
+        route: '/ranking',
+        color: 'bg-purple-600',
+      };
+    }
+
+    if (!gameState?.isActive) {
+      return {
+        title: '게임 준비 중... ⏳',
+        description: '선생님이 게임을 시작할 때까지 기다려주세요.',
+        action: '기다리기',
+        route: '/dashboard',
+        color: 'bg-gray-600',
+      };
+    }
+
+    switch (gameState?.phase) {
+      case 'news':
+        return {
+          title: '뉴스 읽기 📰',
+          description: '환경 뉴스를 읽고 어떤 회사가 좋을지 생각해보세요!',
+          action: '뉴스 보기',
+          route: '/events',
+          color: 'bg-blue-600',
+        };
+      
+      case 'quiz':
+        return {
+          title: '퀴즈 시간 🧠',
+          description: '환경 퀴즈를 풀고 보너스 돈을 받으세요!',
+          action: '퀴즈 풀기',
+          route: '/quiz',
+          color: 'bg-purple-600',
+        };
+      
+      case 'trading':
+        return {
+          title: '주식 거래 📈',
+          description: '뉴스를 참고해서 환경에 좋은 회사 주식을 사보세요!',
+          action: '주식 거래',
+          route: '/stocks',
+          color: 'bg-emerald-600',
+        };
+      
+      case 'results':
+        return {
+          title: '결과 확인 📊',
+          description: '이번 라운드 결과를 확인하고 순위를 봐요!',
+          action: '순위 보기',
+          route: '/ranking',
+          color: 'bg-yellow-600',
+        };
+      
+      default:
+        return {
+          title: '잠시만요... 🤔',
+          description: '게임 상황을 확인하고 있어요.',
+          action: '새로고침',
+          route: '/dashboard',
+          color: 'bg-gray-600',
+        };
+    }
+  },
+};

@@ -145,6 +145,7 @@ export interface QuizResult {
   bonus: number;
   newBalance?: number;
   gameState?: Partial<GameState>;
+  explanation?: string;
 }
 
 export interface TradeResponse {
