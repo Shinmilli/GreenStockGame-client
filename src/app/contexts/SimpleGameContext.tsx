@@ -287,7 +287,7 @@ const markQuizAsCompleted = useCallback(async () => {
       return {
         type: 'wait',
         title: '게임 시작 대기 중... ⏳',
-        description: '선생님이 게임을 시작할 때까지 기다려주세요.',
+        description: '관리자가 게임을 시작할 때까지 기다려주세요.',
         buttonText: '새로고침',
         route: '/dashboard',
         color: 'bg-gradient-to-r from-gray-500 to-gray-600',
@@ -326,7 +326,7 @@ const markQuizAsCompleted = useCallback(async () => {
           return {
             type: 'wait',
             title: '퀴즈 시작 대기 중... ⏳',
-            description: `라운드 ${gameState.currentRound} 뉴스를 다 읽었어요! 선생님이 퀴즈를 시작할 때까지 기다려주세요.`,
+            description: `라운드 ${gameState.currentRound} 뉴스를 다 읽었어요! 관리자가 퀴즈를 시작할 때까지 기다려주세요.`,
             buttonText: '기다리기',
             route: '/dashboard',
             color: 'bg-gradient-to-r from-gray-500 to-gray-600',
@@ -351,7 +351,7 @@ const markQuizAsCompleted = useCallback(async () => {
           return {
             type: 'wait',
             title: '거래 시작 대기 중... ⏳',
-            description: `라운드 ${gameState.currentRound} 퀴즈를 다 풀었어요! 선생님이 거래를 시작할 때까지 기다려주세요.`,
+            description: `라운드 ${gameState.currentRound} 퀴즈를 다 풀었어요! 관리자가 거래를 시작할 때까지 기다려주세요.`,
             buttonText: '기다리기',
             route: '/dashboard',
             color: 'bg-gradient-to-r from-gray-500 to-gray-600',
@@ -376,7 +376,7 @@ const markQuizAsCompleted = useCallback(async () => {
         return {
           type: 'wait',
           title: '게임 진행 대기 중... ⏳',
-          description: '선생님이 다음 단계를 시작할 때까지 기다려주세요.',
+          description: '관리자가 다음 단계를 시작할 때까지 기다려주세요.',
           buttonText: '기다리기',
           route: '/dashboard',
           color: 'bg-gradient-to-r from-gray-500 to-gray-600',

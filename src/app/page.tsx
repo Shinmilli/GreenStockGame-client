@@ -122,7 +122,7 @@ export default function Home() {
                 <span className="text-2xl">1️⃣</span>
                 <div>
                   <h4 className="font-bold text-gray-800 mb-1">팀 코드 입력</h4>
-                  <p className="text-gray-600 text-sm">선생님이 주신 팀 코드로 로그인하세요</p>
+                  <p className="text-gray-600 text-sm">관리자가 주신 팀 코드로 로그인하세요</p>
                 </div>
               </div>
               
