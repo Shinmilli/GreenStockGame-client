@@ -1,14 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
-  
-  // PWA 설정
-  experimental: {
-    newNextLinkBehavior: true,
-  },
-  
-  // 모바일 최적화
+
+  // 모바일 최적화용 보안 헤더
   async headers() {
     return [
       {
