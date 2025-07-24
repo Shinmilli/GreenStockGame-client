@@ -85,8 +85,21 @@ export const api = {
       body: JSON.stringify({ teamId, stockId, quantity, action }),
     }),
 
-  // 포트폴리오
-  getPortfolio: (teamId: number) => apiCall(`/portfolio/${teamId}`),
+  debug: {
+    getStockPrices: () => apiCall('/debug/stocks'),
+    forceUpdatePrice: (symbol: string, newPrice: number) => 
+      apiCall('/admin/force-price', {
+        method: 'POST',
+        body: JSON.stringify({ symbol, newPrice }),
+      }),
+    reapplyEvents: () => apiCall('/game/reapply-events', { method: 'POST' }),
+  },
+  
+  // 🔥 수정된 포트폴리오 함수
+  getPortfolio: (teamId: number) => {
+    console.log('📡 포트폴리오 API 호출:', teamId);
+    return apiCall(`/portfolio/${teamId}`);
+  },
 
   // 랭킹
   getRanking: () => apiCall('/ranking'),
