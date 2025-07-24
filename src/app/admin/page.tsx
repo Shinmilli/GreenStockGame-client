@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 
-// 타입 정의
+// 🔥 완전한 AdminDashboard - 기존 코드에 개선사항 통합
 interface GameState {
   currentRound: number;
   phase: 'news' | 'quiz' | 'trading' | 'results' | 'finished';
@@ -9,6 +9,7 @@ interface GameState {
   isActive: boolean;
   startTime?: string;
   endTime?: string;
+  requiresManualAdvance: boolean; // 🔥 새로 추가
 }
 
 interface Team {
@@ -48,7 +49,8 @@ export default function AdminDashboard() {
     currentRound: 1,
     phase: 'news',
     timeRemaining: 0,
-    isActive: false
+    isActive: false,
+    requiresManualAdvance: false // 🔥 추가
   });
   
   const [teams, setTeams] = useState<Team[]>([]);
@@ -56,7 +58,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('control');
   const [logs, setLogs] = useState<string[]>([]);
-  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null); // 🔥 타입 지정 및 최상위 이동
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
   // 로그 추가 함수
   const addLog = (message: string) => {
@@ -147,6 +149,8 @@ export default function AdminDashboard() {
       if (response.ok) {
         const data = await response.json();
         addLog('🔄 게임 리셋: ' + data.message);
+        localStorage.clear(); // 또는 선택적으로만 삭제
+        addLog('🧹 클라이언트 데이터도 정리 완료');
         await fetchGameState();
       } else {
         const error = await response.json();
@@ -174,6 +178,27 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       addLog('❌ 페이즈 이동 오류: ' + (error as Error).message);
+    }
+  };
+
+  // 🔥 다음 라운드 시작 함수 추가
+  const startNextRound = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/game/start-next-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        addLog('🚀 다음 라운드 시작: ' + data.message);
+        await fetchGameState();
+      } else {
+        const error = await response.json();
+        addLog('❌ 다음 라운드 시작 실패: ' + error.message);
+      }
+    } catch (error) {
+      addLog('❌ 다음 라운드 시작 오류: ' + (error as Error).message);
     }
   };
 
@@ -221,6 +246,65 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🔥 퀴즈 관리 함수들 추가
+  const clearAllQuizSubmissions = async () => {
+    const confirmation = confirm(
+      '⚠️ 모든 팀의 퀴즈 제출 기록을 삭제하시겠습니까?\n\n' +
+      '이 작업은 되돌릴 수 없으며, 모든 팀이 다시 퀴즈를 제출할 수 있게 됩니다.'
+    );
+    
+    if (confirmation) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/quiz/admin/clear-all`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          addLog(`🗑️ 모든 퀴즈 제출 기록 삭제: ${result.message}`);
+          alert(result.message);
+        } else {
+          const error = await response.json();
+          alert('삭제 실패: ' + error.message);
+        }
+      } catch (error) {
+        alert('서버 통신 오류');
+        addLog('❌ 퀴즈 기록 삭제 오류: ' + (error as Error).message);
+      }
+    }
+  };
+
+  const checkQuizResults = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/quiz/results/${gameState.currentRound}`);
+      if (response.ok) {
+        const data = await response.json();
+        alert(`라운드 ${gameState.currentRound} 퀴즈 결과:\n총 제출: ${data.statistics.totalSubmissions}개\n정답률: ${data.statistics.accuracy}%`);
+        addLog(`📊 라운드 ${gameState.currentRound} 퀴즈 결과 조회 완료`);
+      }
+    } catch (error) {
+      alert('퀴즈 결과 조회 실패');
+      addLog('❌ 퀴즈 결과 조회 실패: ' + (error as Error).message);
+    }
+  };
+
+  const checkTeamQuizStatus = async () => {
+    const teamId = prompt('확인할 팀 ID를 입력하세요:');
+    if (teamId) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/quiz/status/${teamId}/${gameState.currentRound}`);
+        if (response.ok) {
+          const data = await response.json();
+          alert(`팀 ${teamId} 퀴즈 상태:\n제출 여부: ${data.hasSubmitted ? '제출함' : '미제출'}\n제출 가능: ${data.canSubmit ? '가능' : '불가능'}`);
+          addLog(`👤 팀 ${teamId} 퀴즈 상태 조회 완료`);
+        }
+      } catch (error) {
+        alert('퀴즈 상태 조회 실패');
+        addLog('❌ 팀 퀴즈 상태 조회 실패: ' + (error as Error).message);
+      }
+    }
+  };
+
   // 초기 데이터 로드 및 실시간 업데이트
   useEffect(() => {
     const loadInitialData = async () => {
@@ -243,6 +327,29 @@ export default function AdminDashboard() {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // 🔥 헬퍼 함수들 추가
+  const getPhaseIcon = (phase: string) => {
+    const icons = {
+      'news': '📰',
+      'quiz': '🧠', 
+      'trading': '💼',
+      'results': '📊',
+      'finished': '🏁'
+    };
+    return icons[phase as keyof typeof icons] || '❓';
+  };
+
+  const getPhaseKorean = (phase: string) => {
+    const phases = {
+      'news': '뉴스 발표',
+      'quiz': '퀴즈 단계',
+      'trading': '거래 단계', 
+      'results': '결과 발표',
+      'finished': '게임 종료'
+    };
+    return phases[phase as keyof typeof phases] || phase;
   };
 
   // 페이즈 정보
@@ -285,9 +392,15 @@ export default function AdminDashboard() {
             
             {/* 게임 상태 표시 */}
             <div className="flex items-center space-x-4">
-              <div className={`px-4 py-2 rounded-full flex items-center space-x-2 ${currentPhase.color}`}>
-                <span className="text-xl">{currentPhase.icon}</span>
-                <span className="font-bold">{currentPhase.title}</span>
+              <div className={`px-4 py-2 rounded-full flex items-center space-x-2 ${
+                gameState.requiresManualAdvance ? 'bg-orange-600 animate-pulse' : currentPhase.color
+              }`}>
+                <span className="text-xl">
+                  {gameState.requiresManualAdvance ? '⏸️' : currentPhase.icon}
+                </span>
+                <span className="font-bold">
+                  {gameState.requiresManualAdvance ? '수동 진행 대기' : currentPhase.title}
+                </span>
               </div>
               
               <div className="text-right">
@@ -306,6 +419,7 @@ export default function AdminDashboard() {
         <div className="flex space-x-1">
           {[
             { id: 'control', label: '게임 제어', icon: '🎮' },
+            { id: 'quiz', label: '퀴즈 관리', icon: '🧠' }, // 🔥 새 탭 추가
             { id: 'debug', label: '데이터 관리', icon: '🛠️' },
             { id: 'events', label: '이벤트 관리', icon: '📰' },
             { id: 'logs', label: '로그', icon: '📋' }
@@ -330,6 +444,38 @@ export default function AdminDashboard() {
         {/* 게임 제어 탭 */}
         {activeTab === 'control' && (
           <div className="space-y-8">
+            {/* 🔥 수동 진행 알림 (최상단에 표시) */}
+            {gameState.requiresManualAdvance && (
+              <div className="bg-orange-500/10 border border-orange-400/30 rounded-xl p-6">
+                <div className="flex items-center space-x-4">
+                  <span className="text-4xl animate-bounce">⚠️</span>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-orange-400 mb-2">
+                      {gameState.phase === 'results' && gameState.currentRound < 8 
+                        ? `라운드 ${gameState.currentRound} 완료! 다음 라운드 시작 준비`
+                        : '관리자 수동 진행 필요'
+                      }
+                    </h3>
+                    <p className="text-gray-300">
+                      {gameState.phase === 'results' && gameState.currentRound < 8 
+                        ? `라운드 ${gameState.currentRound}가 완료되었습니다. "다음 라운드" 버튼을 클릭하여 라운드 ${gameState.currentRound + 1}을 시작하세요.`
+                        : '"다음 단계" 버튼을 클릭하여 게임을 계속 진행하세요.'
+                      }
+                    </p>
+                  </div>
+                  {gameState.phase === 'results' && gameState.currentRound < 8 && (
+                    <button
+                      onClick={startNextRound}
+                      className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl font-bold text-lg transition-all duration-200 flex items-center space-x-2"
+                    >
+                      <span className="text-2xl">🎯</span>
+                      <span>라운드 {gameState.currentRound + 1} 시작</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 게임 상태 카드 */}
             <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
               <h2 className="text-xl font-bold mb-6 flex items-center">
@@ -350,10 +496,16 @@ export default function AdminDashboard() {
                 </div>
                 
                 <div className="text-center">
-                  <div className={`w-20 h-20 rounded-full mx-auto mb-3 flex items-center justify-center ${currentPhase.color}`}>
-                    <span className="text-3xl">{currentPhase.icon}</span>
+                  <div className={`w-20 h-20 rounded-full mx-auto mb-3 flex items-center justify-center ${
+                    gameState.requiresManualAdvance ? 'bg-orange-600 animate-pulse' : currentPhase.color
+                  }`}>
+                    <span className="text-3xl">
+                      {gameState.requiresManualAdvance ? '⏸️' : currentPhase.icon}
+                    </span>
                   </div>
-                  <p className="text-lg font-bold">{currentPhase.title}</p>
+                  <p className="text-lg font-bold">
+                    {gameState.requiresManualAdvance ? '수동 진행 대기' : currentPhase.title}
+                  </p>
                 </div>
                 
                 <div className="text-center">
@@ -372,7 +524,7 @@ export default function AdminDashboard() {
                 게임 컨트롤
               </h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <button
                   onClick={startGame}
                   disabled={gameState.isActive}
@@ -389,6 +541,16 @@ export default function AdminDashboard() {
                 >
                   <span className="text-2xl">⏭️</span>
                   <span>다음 단계</span>
+                </button>
+                
+                {/* 🔥 다음 라운드 시작 버튼 */}
+                <button
+                  onClick={startNextRound}
+                  disabled={!gameState.isActive || gameState.phase !== 'results' || !gameState.requiresManualAdvance || gameState.currentRound >= 8}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-4 rounded-lg font-bold text-lg transition-all duration-200 flex items-center justify-center space-x-2"
+                >
+                  <span className="text-2xl">🎯</span>
+                  <span>다음 라운드</span>
                 </button>
                 
                 <button
@@ -441,7 +603,75 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 🔥 데이터 관리 탭 추가 */}
+        {/* 🔥 퀴즈 관리 탭 추가 */}
+        {activeTab === 'quiz' && (
+          <div className="space-y-6">
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+              <h2 className="text-xl font-bold mb-6 flex items-center">
+                <span className="text-2xl mr-3">🧠</span>
+                퀴즈 관리 및 제출 상태
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <button
+                  onClick={checkQuizResults}
+                  className="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg text-white font-bold transition-all duration-200"
+                >
+                  📊 현재 라운드 퀴즈 결과
+                </button>
+
+                <button
+                  onClick={checkTeamQuizStatus}
+                  className="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-lg text-white font-bold transition-all duration-200"
+                >
+                  👤 특정 팀 퀴즈 상태
+                </button>
+
+                <button
+                  onClick={clearAllQuizSubmissions}
+                  className="bg-red-600 hover:bg-red-700 px-4 py-3 rounded-lg text-white font-bold transition-all duration-200"
+                >
+                  🗑️ 모든 퀴즈 기록 삭제
+                </button>
+              </div>
+
+              {/* 퀴즈 단계일 때 실시간 상태 표시 */}
+              {gameState.phase === 'quiz' && (
+                <div className="bg-purple-500/10 border border-purple-400/30 rounded-lg p-4 mb-6">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <span className="text-2xl animate-pulse">🧠</span>
+                    <span className="text-purple-400 font-bold">퀴즈 진행 중</span>
+                  </div>
+                  <p className="text-gray-300 text-sm">
+                    현재 라운드 {gameState.currentRound}의 퀴즈가 진행되고 있습니다. 
+                    학생들이 퀴즈를 제출하는 동안 기다려주세요.
+                  </p>
+                  <div className="mt-3 text-center">
+                    <span className="text-lg font-bold text-purple-400">
+                      남은 시간: {formatTime(gameState.timeRemaining)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 퀴즈 관리 도움말 */}
+              <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-4">
+                <h4 className="text-blue-400 font-bold mb-3 flex items-center">
+                  <span className="text-xl mr-2">💡</span>
+                  퀴즈 관리 가이드
+                </h4>
+                <ul className="text-gray-300 text-sm space-y-2">
+                  <li>• <strong>퀴즈 결과 보기:</strong> 현재 라운드의 제출 현황과 정답률을 확인합니다</li>
+                  <li>• <strong>팀별 상태 확인:</strong> 특정 팀이 퀴즈를 제출했는지 확인합니다</li>
+                  <li>• <strong>퀴즈 기록 삭제:</strong> 모든 팀의 제출 기록을 삭제하여 재제출을 허용합니다</li>
+                  <li>• <strong>중복 제출 방지:</strong> 각 팀은 라운드당 한 번만 퀴즈를 제출할 수 있습니다</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 데이터 관리 탭 */}
         {activeTab === 'debug' && (
           <div className="space-y-6">
             <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
@@ -513,7 +743,7 @@ export default function AdminDashboard() {
                 </button>
               </div>
 
-              {/* 🔥 서버 데이터 관리 섹션 추가 */}
+              {/* 서버 데이터 관리 섹션 */}
               <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4 mb-6">
                 <h4 className="text-red-400 font-bold mb-4 flex items-center">
                   <span className="text-xl mr-2">🗄️</span>
@@ -521,34 +751,7 @@ export default function AdminDashboard() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <button
-                    onClick={async () => {
-                      const confirmation = confirm(
-                        '⚠️ 서버의 모든 퀴즈 제출 기록을 삭제하시겠습니까?\n\n' +
-                        '이 작업은 데이터베이스의 퀴즈 답안 및 보상 기록을 모두 삭제합니다.'
-                      );
-                      
-                      if (confirmation) {
-                        try {
-                          const response = await fetch(`${API_BASE_URL}/quiz/admin/clear-all`, {
-                            method: 'DELETE',
-                            headers: { 'Content-Type': 'application/json' }
-                          });
-                          
-                          if (response.ok) {
-                            const result = await response.json();
-                            addLog(`🗑️ 서버 퀴즈 기록 삭제: ${result.message}`);
-                            alert(result.message);
-                          } else {
-                            const error = await response.json();
-                            addLog('❌ 서버 퀴즈 삭제 실패: ' + error.message);
-                            alert('서버 데이터 삭제 실패: ' + error.message);
-                          }
-                        } catch (error) {
-                          addLog('❌ 서버 통신 오류: ' + error.message);
-                          alert('서버 통신 오류: ' + error.message);
-                        }
-                      }
-                    }}
+                    onClick={clearAllQuizSubmissions}
                     className="bg-red-600 hover:bg-red-700 px-4 py-3 rounded-lg text-white font-bold transition-all"
                   >
                     🗄️ 서버 퀴즈 기록 삭제
@@ -580,8 +783,8 @@ export default function AdminDashboard() {
                               alert('삭제 실패: ' + error.message);
                             }
                           } catch (error) {
-                            addLog('❌ 서버 통신 오류: ' + error.message);
-                            alert('서버 통신 오류: ' + error.message);
+                            addLog('❌ 서버 통신 오류: ' + (error as Error).message);
+                            alert('서버 통신 오류');
                           }
                         }
                       } else {
