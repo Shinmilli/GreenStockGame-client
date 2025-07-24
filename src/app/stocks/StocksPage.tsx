@@ -159,7 +159,6 @@ useEffect(() => {
     }
   };
 
- // 🔥 완전히 수정된 fetchPortfolio 함수
 const fetchPortfolio = async (teamId: number) => {
   console.log('🔄 fetchPortfolio 시작:', teamId);
   
@@ -169,33 +168,22 @@ const fetchPortfolio = async (teamId: number) => {
   }
   
   try {
-    console.log('📡 API 호출:', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/portfolio/${teamId}`);
-    
+    console.log('📡 API 호출 시작');
     const data = await api.getPortfolio(teamId);
     console.log('📊 서버에서 받은 포트폴리오 데이터:', data);
     
-    // 🔥 서버 응답 구조 확인 및 처리
     if (data && typeof data === 'object') {
-      console.log('✅ 포트폴리오 데이터 유효성 확인됨');
+      // 🔥 서버 응답 구조에 맞게 처리
+      const team = data.team || teamData || createDefaultTeam();
+      const holdings = data.holdings || [];
+      const summary = data.summary || {
+        totalValue: 0,
+        totalInvestment: 0,
+        totalProfit: 0,
+        totalProfitPercent: 0
+      };
       
-      // 🔥 서버 응답에서 올바른 필드 찾기
-      let holdings = [];
-      
-      // 여러 가능한 필드명 시도
-      if (data.holdings && Array.isArray(data.holdings)) {
-        holdings = data.holdings;
-        console.log('📋 holdings 필드 사용');
-      } else if (data.portfolio && Array.isArray(data.portfolio)) {
-        holdings = data.portfolio;
-        console.log('📋 portfolio 필드 사용');
-      } else if (Array.isArray(data)) {
-        holdings = data;
-        console.log('📋 직접 배열 사용');
-      }
-      
-      console.log('📊 원본 holdings:', holdings);
-      
-      // holdings 검증 및 필터링
+      // 🔥 holdings 데이터 검증 및 가공
       const validHoldings = holdings
         .filter(holding => {
           const isValid = holding && 
@@ -203,59 +191,64 @@ const fetchPortfolio = async (teamId: number) => {
             holding.stock && 
             typeof holding.stock === 'object' &&
             typeof holding.quantity === 'number' &&
-            holding.quantity > 0; // 🔥 0보다 큰 수량만
+            holding.quantity > 0 &&
+            typeof holding.averagePrice === 'number' &&
+            holding.averagePrice > 0; // 🔥 평균 단가도 0보다 커야 함
           
           if (!isValid) {
             console.warn('❌ 유효하지 않은 holding:', holding);
           }
           return isValid;
         })
-        .map(holding => ({
-          ...holding,
-          // 🔥 필요한 계산 필드들 추가/검증
-          currentValue: (holding.stock.currentPrice || 0) * (holding.quantity || 0),
-          profit: ((holding.stock.currentPrice || 0) * (holding.quantity || 0)) - ((holding.averagePrice || 0) * (holding.quantity || 0)),
-          profitPercent: holding.averagePrice > 0 
-            ? (((holding.stock.currentPrice || 0) - (holding.averagePrice || 0)) / (holding.averagePrice || 0)) * 100 
-            : 0
-        }));
+        .map(holding => {
+          // 🔥 안전한 수치 계산
+          const currentPrice = Number(holding.stock.currentPrice) || 0;
+          const averagePrice = Number(holding.averagePrice) || 0;
+          const quantity = Number(holding.quantity) || 0;
+          
+          const currentValue = currentPrice * quantity;
+          const investmentValue = averagePrice * quantity;
+          const profit = currentValue - investmentValue;
+          const profitPercent = investmentValue > 0 ? (profit / investmentValue) * 100 : 0;
+          
+          return {
+            ...holding,
+            stock: {
+              ...holding.stock,
+              currentPrice
+            },
+            averagePrice,
+            quantity,
+            currentValue,
+            profit,
+            profitPercent
+          };
+        });
       
-      console.log('✅ 검증된 holdings:', validHoldings);
-      console.log('📊 보유 주식 수:', validHoldings.length);
-      
-      // 🔥 포트폴리오 요약 계산
-      const totalValue = validHoldings.reduce((sum, h) => sum + (h.currentValue || 0), 0);
-      const totalInvestment = validHoldings.reduce((sum, h) => sum + ((h.averagePrice || 0) * (h.quantity || 0)), 0);
-      const totalProfit = totalValue - totalInvestment;
-      const profitPercent = totalInvestment > 0 ? (totalProfit / totalInvestment) * 100 : 0;
+      console.log('✅ 처리된 holdings:', validHoldings);
       
       // 🔥 최종 포트폴리오 데이터 생성
       const portfolioData: Portfolio = {
-        team: data.team || teamData || createDefaultTeam(),
+        team: {
+          ...team,
+          balance: Number(team.balance) || 0
+        },
         holdings: validHoldings,
-        totalValue,
-        totalInvestment,
-        totalProfit,
-        profitPercent
+        totalValue: summary.totalValue || validHoldings.reduce((sum, h) => sum + h.currentValue, 0),
+        totalInvestment: summary.totalInvestment || validHoldings.reduce((sum, h) => sum + (h.averagePrice * h.quantity), 0),
+        totalProfit: summary.totalProfit || (summary.totalValue - summary.totalInvestment),
+        profitPercent: summary.totalProfitPercent || 0
       };
       
-      console.log('✅ 최종 포트폴리오 데이터:', {
+      console.log('✅ 최종 포트폴리오:', {
+        teamBalance: portfolioData.team.balance,
         holdingsCount: portfolioData.holdings.length,
         totalValue: portfolioData.totalValue,
-        totalInvestment: portfolioData.totalInvestment,
         totalProfit: portfolioData.totalProfit,
-        teamBalance: portfolioData.team?.balance,
-        holdings: portfolioData.holdings.map(h => `${h.stock?.symbol}: ${h.quantity}주`)
+        profitPercent: portfolioData.profitPercent
       });
       
       setPortfolio(portfolioData);
-      
-      // 🔥 성공 메시지
-      if (portfolioData.holdings.length > 0) {
-        console.log(`🎉 포트폴리오 업데이트 성공! ${portfolioData.holdings.length}개 주식 보유 중`);
-      } else {
-        console.log('📝 포트폴리오가 비어있습니다 (보유 주식 없음)');
-      }
       
     } else {
       console.error('❌ 포트폴리오 데이터가 유효하지 않음:', data);
@@ -274,7 +267,6 @@ const fetchPortfolio = async (teamId: number) => {
       profitPercent: 0
     };
     
-    console.log('🔄 빈 포트폴리오로 초기화');
     setPortfolio(emptyPortfolio);
   }
 };
@@ -818,20 +810,6 @@ const fetchPortfolio = async (teamId: number) => {
                           </div>
                         </div>
 
-                        {/* 🔥 매도 버튼 - 수정됨 (stock -> holding.stock) */}
-                        <button
-                          onClick={() => {
-                            setSelectedStock(holding.stock); // 🔥 stock -> holding.stock
-                            setAction('sell');
-                            setQuantity(1);
-                            setShowModal(true);
-                          }}
-                          disabled={!holding.stock || holding.quantity <= 0}
-                          className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-4 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center space-x-2"
-                        >
-                          <span className="text-xl">📉</span>
-                          <span>매도하기</span>
-                        </button>
                       </div>
                     </div>
                   ))}
