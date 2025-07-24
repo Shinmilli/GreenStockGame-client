@@ -286,7 +286,7 @@ export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, 
 // 게임 설정 상수들
 export const GAME_CONSTANTS = {
   TOTAL_ROUNDS: 8,
-  INITIAL_BALANCE: 100000,
+  INITIAL_BALANCE: 10000,
   TRADE_FEE_RATE: 0.005,
   QUIZ_BONUS_RATE: 0.02,
   PHASE_DURATIONS: {

@@ -223,7 +223,7 @@ export default function Quiz() {
               대시보드로 돌아가기
             </button>
             
-            {/* 🔥 디버그 모드에서만 표시되는 우회 버튼 */}
+            {/* 🔥 디버그 모드에서만 표시되는 우회 버튼
             {debugMode && (
               <>
                 <button
@@ -243,7 +243,7 @@ export default function Quiz() {
                   🚨 완전 초기화
                 </button>
               </>
-            )}
+            )} */}
           </div>
         </div>
       </div>
@@ -269,36 +269,6 @@ export default function Quiz() {
         <div className="absolute bottom-10 left-10 w-80 h-80 bg-gradient-purple opacity-10 rounded-full blur-3xl animate-float" style={{ animationDelay: '3s' }}></div>
       </div>
 
-      {/* 🔥 디버그 모드 버튼들
-      {debugMode && (
-        <div className="fixed top-4 right-4 z-50 space-y-2">
-          <button
-            onClick={() => {
-              localStorage.clear();
-              sessionStorage.clear();
-              window.location.reload();
-            }}
-            className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white font-bold text-sm block w-full"
-          >
-            🚨 완전 초기화
-          </button>
-          
-          <button
-            onClick={createFakeResult}
-            className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-white font-bold text-sm block w-full"
-          >
-            🎭 가짜 결과
-          </button>
-          
-          <button
-            onClick={() => submitAnswer(true)}
-            disabled={selectedAnswer === null || loading}
-            className="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded text-white font-bold text-sm block w-full disabled:opacity-50"
-          >
-            🔓 강제 제출
-          </button>
-        </div>
-      )} */}
       {/* 헤더 */}
       <div className="glass-dark border-b border-dark-600 sticky top-0 z-50">
         <div className="px-4 py-4 flex items-center justify-between">

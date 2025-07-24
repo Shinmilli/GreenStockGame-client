@@ -90,19 +90,7 @@ const fetchGameState = useCallback(async () => {
       
       // 🔥 방법 2-1: 서버에서 개별 사용자 진행 상태도 받아오기
       let userProgress = null;
-      try {
-        const teamData = localStorage.getItem('teamData');
-        if (teamData) {
-          const team = JSON.parse(teamData);
-          const progressResponse = await fetch(`${API_BASE_URL}/teams/${team.id}/progress/${currentRound}`);
-          if (progressResponse.ok) {
-            userProgress = await progressResponse.json();
-            console.log('👤 사용자 진행 상태:', userProgress);
-          }
-        }
-      } catch (error) {
-        console.warn('⚠️ 사용자 진행 상태 조회 실패:', error);
-      }
+
       
       // 🔥 방법 2-2: 서버 상태 우선, 로컬은 참고용으로만 사용
       let hasSeenNews = false;
