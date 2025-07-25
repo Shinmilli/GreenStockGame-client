@@ -121,24 +121,24 @@ export default function Home() {
               <div className="flex items-start space-x-3">
                 <span className="text-2xl">1️⃣</span>
                 <div>
-                  <h4 className="font-bold text-gray-800 mb-1">팀 코드 입력</h4>
-                  <p className="text-gray-600 text-sm">관리자가 주신 팀 코드로 로그인하세요</p>
+                  <h4 className="font-bold text-gray-300 mb-1">팀 코드 입력</h4>
+                  <p className="text-gray-400 text-sm">관리자가 주신 팀 코드로 로그인하세요</p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-3">
                 <span className="text-2xl">2️⃣</span>
                 <div>
-                  <h4 className="font-bold text-gray-800 mb-1">뉴스와 퀴즈</h4>
-                  <p className="text-gray-600 text-sm">환경 뉴스를 읽고 퀴즈를 풀어요</p>
+                  <h4 className="font-bold text-gray-300 mb-1">뉴스와 퀴즈</h4>
+                  <p className="text-gray-400 text-sm">환경 뉴스를 읽고 퀴즈를 풀어요</p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-3">
                 <span className="text-2xl">3️⃣</span>
                 <div>
-                  <h4 className="font-bold text-gray-800 mb-1">투자하기</h4>
-                  <p className="text-gray-600 text-sm">환경에 좋은 회사 주식을 사요</p>
+                  <h4 className="font-bold text-gray-300 mb-1">투자하기</h4>
+                  <p className="text-gray-400 text-sm">환경에 좋은 회사 주식을 사요</p>
                 </div>
               </div>
             </div>
